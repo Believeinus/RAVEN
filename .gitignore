@@ -1,5 +1,6 @@
 # ---- Local-only working files (never committed) ----
 /CLAUDE.md
+/docs/ABOUT-PROJECT.md
 /docs/BUILD-LOG.md
 /docs/*-PROGRESS.md
 /docs/SECURITY-AUDIT*.md

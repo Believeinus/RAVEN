@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RatScan.Engine\RatScan.Engine.csproj" />
+    <ProjectReference Include="..\RatScan.Etw\RatScan.Etw.csproj" />
     <ProjectReference Include="..\RatScan.Native\RatScan.Native.csproj" />
     <ProjectReference Include="..\RatScan.Rules\RatScan.Rules.csproj" />
   </ItemGroup>
