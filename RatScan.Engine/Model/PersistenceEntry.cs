@@ -13,11 +13,11 @@ namespace RatScan.Engine.Model;
 /// </summary>
 public enum PersistenceSurface
 {
+    // --- collected by PersistenceCollector (14) ---
     RunKey,
     RunOnceKey,
     StartupFolder,
     ScheduledTask,
-    Service,
     WmiEventSubscription,
     WinlogonShell,
     WinlogonUserinit,
@@ -28,6 +28,16 @@ public enum PersistenceSurface
     LsaPackage,
     PrintMonitor,
     NetshHelper,
+
+    // --- DECLARED BUT NOT YET SWEPT ---
+    // No collector emits these. They are kept because the surfaces are real and
+    // planned, but nothing currently looks at them — so a machine using one of these
+    // for persistence would produce no finding.
+    //
+    // This distinction is not cosmetic on this project. An enum member that implies a
+    // surface is examined when it is not is the same lie as a verdict that implies
+    // coverage it does not have. Until a collector exists, they stay flagged.
+    Service,
     ActiveSetup,
     PowerShellProfile,
 }

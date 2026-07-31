@@ -16,10 +16,12 @@ A Windows remote-access and RAT detection tool that tells you the truth about it
 ---
 
 > [!WARNING]
-> **In active development — phase 0 of 11 complete.** The solution scaffolds and
-> builds; the detection engine is not yet implemented. Nothing here detects anything
-> yet. This notice comes down when the end-to-end verification in
-> `docs/` actually passes.
+> **In active development — phases 0–9 of 11 complete.** The scanner works end to end:
+> it runs, detects, explains, and can shut down what it finds. Still outstanding:
+> scan history and an allowlist, packaging, and the ten end-to-end verification steps
+> in `docs/`. The live watcher's engine exists but is **not wired into the UI** and its
+> elevated path is **unverified** — see `docs/RATSCAN-PROGRESS.md` for the honest
+> per-phase state.
 
 ## What it does
 
@@ -57,9 +59,10 @@ make the remaining blind spots visible and named.** Three things follow from tha
 - **Known remote-access software** — ~60 products (AnyDesk, TeamViewer, RustDesk, ScreenConnect, NetSupport, Remote Utilities, the VNC family, RMM agents…), matched on process, service, driver, path, signer, and registry footprint. Portable/uninstalled instances are scored *higher* — that's the support-scam signature.
 - **Windows' own remote surfaces** — RDP (including the `Shadow` policy, which permits silent session watching), WinRM, PS Remoting, OpenSSH, Remote Registry, Remote Assistance, Quick Assist, SMB sessions, `netsh portproxy`, inbound firewall rules.
 - **Screen & input surveillance** — capture-capable module correlation, virtual/indirect display drivers, injected-hook footprints, UIAccess tokens, virtual HID drivers.
-- **Persistence (ASEP)** — Run keys, scheduled tasks, services, **WMI permanent event subscriptions**, Winlogon, `AppInit_DLLs`, IFEO, COM hijacks, LSA packages, and more.
-- **Trust analysis** — Authenticode verification on every running image (including the catalog path), path and masquerade anomalies.
-- **Live watch** — real-time ETW over kernel process/image/network events and DNS.
+- **Persistence (ASEP)** — 14 surfaces: Run/RunOnce across both registry views, startup folders, scheduled tasks, **WMI permanent event subscriptions**, Winlogon Shell/Userinit, `AppInit_DLLs`, `AppCertDlls`, IFEO debuggers, COM hijacks, LSA packages, print monitors, netsh helpers.
+- **Trust analysis** — Authenticode verification on every running image, including the catalog path (42 of 60 sampled System32 binaries are catalog-signed, so skipping it would misreport all 42 as unsigned).
+- **Guided remediation** — end a process and its children, stop and disable a service, remove an auto-start entry, turn off a Windows remote feature. Every action shows the exact command first and runs only on explicit confirmation.
+- **Live watch** *(engine only — not yet in the UI)* — real-time ETW over kernel process, image-load and TCP events.
 
 ## Requirements
 

@@ -43,7 +43,7 @@ All notable changes to RatScan are recorded here. Format follows
   capability, evidence chain, correlated listening ports and a disable command.
 - Remote logon history from Security event 4624 logon type 10, degrading to a named
   blind spot when the Security log is unreadable.
-- `PersistenceCollector` sweeping seventeen auto-start surfaces: Run/RunOnce across
+- `PersistenceCollector` sweeping fourteen auto-start surfaces: Run/RunOnce across
   both registry views, startup folders, scheduled tasks, Winlogon Shell/Userinit,
   AppInit_DLLs, AppCertDlls, IFEO debuggers, COM hijacks, LSA packages, print
   monitors, netsh helpers, and WMI permanent event subscriptions.
