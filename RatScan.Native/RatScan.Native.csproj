@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Native interop surface. CsWin32 generates P/Invoke signatures from Microsoft's
+    Windows metadata at build time (see NativeMethods.txt) so struct layouts are
+    correct by construction rather than by hand — the whole reason this project
+    is C# and not Python.
+
+    TargetFramework, Nullable, ImplicitUsings, AllowUnsafeBlocks and the platform
+    come from Directory.Build.props. Do not restate them here.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>RatScan.Native</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.298">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

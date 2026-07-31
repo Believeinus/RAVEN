@@ -1,0 +1,175 @@
+// CsWin32 generates P/Invoke signatures for everything listed here, straight from
+// Microsoft's Windows metadata. Struct layouts are therefore correct by construction
+// — the single biggest reason this tool is C# rather than a ctypes-based script,
+// where a wrong field offset fails silently and produces a confidently wrong verdict.
+//
+// Grouped by the collector that consumes each API.
+
+// ---------------------------------------------------------------------------
+// Process enumeration — view 1: Toolhelp32
+// ---------------------------------------------------------------------------
+CreateToolhelp32Snapshot
+Process32FirstW
+Process32NextW
+Module32FirstW
+Module32NextW
+Thread32First
+Thread32Next
+CREATE_TOOLHELP_SNAPSHOT_FLAGS
+
+// ---------------------------------------------------------------------------
+// Process enumeration — view 2: native NtQuerySystemInformation
+// Also supplies the kernel-debugger check for the Scan Integrity panel.
+// ---------------------------------------------------------------------------
+NtQuerySystemInformation
+SYSTEM_INFORMATION_CLASS
+SYSTEM_PROCESS_INFORMATION
+NTSTATUS
+
+// ---------------------------------------------------------------------------
+// Process enumeration — view 3: PSAPI
+// ---------------------------------------------------------------------------
+EnumProcesses
+EnumProcessModulesEx
+GetModuleFileNameExW
+GetModuleBaseNameW
+GetModuleInformation
+GetProcessImageFileNameW
+
+// ---------------------------------------------------------------------------
+// Per-process detail: identity, token, integrity level, architecture
+// ---------------------------------------------------------------------------
+OpenProcess
+CloseHandle
+WaitForSingleObject
+QueryFullProcessImageNameW
+GetProcessTimes
+IsWow64Process2
+OpenProcessToken
+GetTokenInformation
+TOKEN_ELEVATION
+TOKEN_MANDATORY_LABEL
+TOKEN_INFORMATION_CLASS
+PROCESS_ACCESS_RIGHTS
+TOKEN_ACCESS_MASK
+GetPriorityClass
+GetProcessHandleCount
+
+// Token / SID helpers — used for the UIAccess and integrity-level checks that
+// feed the input-control detector.
+GetSidSubAuthority
+GetSidSubAuthorityCount
+ConvertSidToStringSidW
+LookupAccountSidW
+
+// ---------------------------------------------------------------------------
+// Authenticode + catalog signature verification
+// INVARIANT: the catalog path is mandatory. Most Windows binaries are catalog-
+// signed, not embedded-signed; verifying only embedded signatures would mark half
+// of Windows unsigned and bury real findings under noise.
+// ---------------------------------------------------------------------------
+WinVerifyTrust
+WINTRUST_DATA
+WINTRUST_FILE_INFO
+WINTRUST_CATALOG_INFO
+WTHelperProvDataFromStateData
+WTHelperGetProvSignerFromChain
+WTHelperGetProvCertFromChain
+CryptCATAdminAcquireContext2
+CryptCATAdminReleaseContext
+CryptCATAdminCalcHashFromFileHandle2
+CryptCATAdminEnumCatalogFromHash
+CryptCATAdminReleaseCatalogContext
+CryptCATCatalogInfoFromContext
+CertGetNameStringW
+CertNameToStrW
+CertFreeCertificateContext
+
+// ---------------------------------------------------------------------------
+// Network — connection tables (view 1 of the cross-view network diff)
+// ---------------------------------------------------------------------------
+GetExtendedTcpTable
+GetExtendedUdpTable
+MIB_TCPTABLE_OWNER_PID
+MIB_TCP6TABLE_OWNER_PID
+MIB_UDPTABLE_OWNER_PID
+MIB_UDP6TABLE_OWNER_PID
+TCP_TABLE_CLASS
+UDP_TABLE_CLASS
+MIB_TCP_STATE
+
+// ---------------------------------------------------------------------------
+// Services — SCM view (diffed against the registry walk)
+// ---------------------------------------------------------------------------
+OpenSCManagerW
+OpenServiceW
+EnumServicesStatusExW
+QueryServiceConfigW
+QueryServiceConfig2W
+CloseServiceHandle
+ControlService
+ChangeServiceConfigW
+ENUM_SERVICE_STATUS_PROCESSW
+QUERY_SERVICE_CONFIGW
+SERVICE_STATUS_PROCESS
+
+// ---------------------------------------------------------------------------
+// Kernel drivers — loaded-image view (diffed against registry + object directory)
+// ---------------------------------------------------------------------------
+EnumDeviceDrivers
+GetDeviceDriverBaseNameW
+GetDeviceDriverFileNameW
+
+// ---------------------------------------------------------------------------
+// Object manager — \Driver and \Device directories.
+// A driver present here but absent from EnumDeviceDrivers is actively hiding.
+// ---------------------------------------------------------------------------
+NtOpenDirectoryObject
+NtQueryDirectoryObject
+// OBJECT_DIRECTORY_INFORMATION is absent from the Windows metadata (it is documented
+// only in the DDK), so it is hand-declared alongside the object-directory walker in
+// phase 5 rather than generated here.
+OBJECT_ATTRIBUTES
+UNICODE_STRING
+RtlInitUnicodeString
+
+// ---------------------------------------------------------------------------
+// Terminal Services — who is logged in, and over what transport
+// ---------------------------------------------------------------------------
+WTSEnumerateSessionsW
+WTSQuerySessionInformationW
+WTSFreeMemory
+WTS_SESSION_INFOW
+WTS_INFO_CLASS
+WTS_CONNECTSTATE_CLASS
+WTS_CLIENT_ADDRESS
+WTSGetActiveConsoleSessionId
+ProcessIdToSessionId
+
+// ---------------------------------------------------------------------------
+// SMB — live inbound sessions and exposed shares
+// ---------------------------------------------------------------------------
+NetSessionEnum
+NetShareEnum
+NetApiBufferFree
+SESSION_INFO_10
+SHARE_INFO_502
+
+// ---------------------------------------------------------------------------
+// Windows / desktop — hidden-window correlation for the surveillance detector
+// ---------------------------------------------------------------------------
+EnumWindows
+GetWindowThreadProcessId
+IsWindowVisible
+GetWindowTextW
+GetWindowTextLengthW
+GetShellWindow
+
+// ---------------------------------------------------------------------------
+// Scan Integrity panel inputs
+// ---------------------------------------------------------------------------
+IsDebuggerPresent
+CheckRemoteDebuggerPresent
+GetNativeSystemInfo
+GetSystemFirmwareTable
+GetFirmwareEnvironmentVariableW

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Rule packs (known remote-access tools, tunnelers, RAT families, ASEP
+    definitions, suspicious-path rules) shipped as embedded YAML so they can be
+    revised without touching detector code.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>RatScan.Rules</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Packs\**\*.yaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+</Project>

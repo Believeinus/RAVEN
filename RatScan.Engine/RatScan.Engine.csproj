@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The detection engine: Collectors -> Detectors -> Scoring -> Findings.
+
+    INVARIANT: this project must never reference RatScan.UI or any UI type.
+    The collector/detector split is what makes detection logic unit-testable
+    without a live infected machine. Collectors gather facts and never judge;
+    detectors judge and never touch the OS directly.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>RatScan.Engine</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RatScan.Native\RatScan.Native.csproj" />
+    <ProjectReference Include="..\RatScan.Rules\RatScan.Rules.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="TaskScheduler" Version="2.12.2" />
+  </ItemGroup>
+
+</Project>

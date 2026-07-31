@@ -1,0 +1,63 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,xml,csproj,props,targets,manifest}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# --- using directives ---
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# --- modern C# style ---
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_prefer_braces = true:warning
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+
+# --- naming: private fields _camelCase ---
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_prefix
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_prefix.required_prefix = _
+dotnet_naming_style.underscore_prefix.capitalization = camel_case
+
+# --- quality rules that matter for a security tool ---
+dotnet_diagnostic.CA2100.severity = error   # SQL injection review
+dotnet_diagnostic.CA5350.severity = error   # weak crypto algorithms
+dotnet_diagnostic.CA5351.severity = error   # broken crypto algorithms
+dotnet_diagnostic.CA2016.severity = warning # forward CancellationToken
+
+# "Unsigned" is the domain term for a binary with no Authenticode signature, not a
+# stray reference to the numeric type. Renaming it would make the enum read worse.
+dotnet_diagnostic.CA1720.severity = none
+
+# Interop code is inherently unsafe/pointer-heavy; these fire constantly there
+# and are checked by hand instead.
+dotnet_diagnostic.CA1401.severity = none    # P/Invokes should not be visible
+dotnet_diagnostic.SYSLIB1054.severity = none # use LibraryImport (CsWin32 emits DllImport)
+
+# Generated interop — analyzers off, we do not own this code.
+[**/obj/**.cs]
+generated_code = true
+
+# Test names are deliberately snake_case sentences — they read as the assertion.
+[RatScan.Tests/**.cs]
+dotnet_diagnostic.CA1707.severity = none

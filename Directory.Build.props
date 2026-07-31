@@ -1,0 +1,57 @@
+<Project>
+
+  <!--
+    Shared build settings for every RatScan project.
+    Individual .csproj files override only what genuinely differs.
+  -->
+
+  <PropertyGroup>
+    <!--
+      The platform version in the TFM sets TargetPlatformVersion, which
+      SupportedOSPlatformVersion below cannot exceed. 10.0.17763 (Win10 1809) is the
+      floor the catalog-verification APIs need.
+    -->
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <!--
+      PlatformTarget alone forces a 64-bit process, which the native struct layouts
+      require. Deliberately NOT setting <Platforms>x64</Platforms>: that makes
+      solution builds emit to bin\x64\... while project-level builds emit to
+      bin\..., leaving two divergent copies of every assembly to confuse tooling.
+    -->
+    <PlatformTarget>x64</PlatformTarget>
+    <!--
+      net8.0-windows defaults to a Windows 7 floor, which makes the platform-
+      compatibility analyzer reject APIs this tool genuinely depends on
+      (CryptCATAdminAcquireContext2 is Windows 8+). RatScan targets Windows 11, so
+      declare a Windows 10 1809 floor and let the analyzer hold us to it honestly
+      rather than suppressing it per call site.
+    -->
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Product>RatScan</Product>
+    <Company>RatScan</Company>
+    <Authors>Hiteshwar Singh</Authors>
+    <Version>0.1.0</Version>
+    <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup>
+
+  <!--
+    Warnings stay warnings during normal iteration; the verification pass runs
+    `dotnet build -warnaserror` explicitly. Setting it globally here would make
+    CsWin32's generated interop code block every build for cosmetic reasons.
+  -->
+  <PropertyGroup>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

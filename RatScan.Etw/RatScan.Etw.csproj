@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Real-time ETW: kernel process / image-load / network providers plus
+    Microsoft-Windows-DNS-Client. This is the capability that lets RatScan
+    observe behaviour as it happens rather than only enumerate state at the
+    instant a scan runs. Requires Administrator.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>RatScan.Etw</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RatScan.Engine\RatScan.Engine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.5" />
+  </ItemGroup>
+
+</Project>

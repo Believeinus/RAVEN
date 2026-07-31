@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPF shell. MVVM via CommunityToolkit.Mvvm, Fluent theming via Wpf.Ui,
+    composition via Microsoft.Extensions.Hosting.
+
+    Runs elevated by manifest: without Administrator the tool cannot open every
+    process, enumerate kernel drivers, or start an ETW session — and a scan that
+    silently lacks those is exactly the false reassurance this project exists to
+    avoid. Running unelevated is still permitted, but the Scan Integrity panel
+    reports the degraded coverage.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>RatScan.UI</RootNamespace>
+    <AssemblyName>RatScan</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- <ApplicationIcon>Assets\ratscan.ico</ApplicationIcon> restored in the polish phase -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RatScan.Engine\RatScan.Engine.csproj" />
+    <ProjectReference Include="..\RatScan.Etw\RatScan.Etw.csproj" />
+    <ProjectReference Include="..\RatScan.Native\RatScan.Native.csproj" />
+    <ProjectReference Include="..\RatScan.Rules\RatScan.Rules.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+
+  <assemblyIdentity version="0.1.0.0" name="RatScan.app" />
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!--
+          asInvoker, NOT requireAdministrator — deliberate.
+
+          RatScan needs Administrator for full coverage (opening every process,
+          enumerating kernel drivers, starting an ETW session). But forcing
+          elevation in the manifest would make it impossible to ever observe the
+          unelevated path, and the unelevated path is a first-class product
+          behaviour here: the Scan Integrity panel must visibly degrade the
+          verdict and name the blind spots when privileges are missing. It is
+          also required by the end-to-end verification plan.
+
+          So: launch as invoker, detect the token at startup, and offer an
+          explicit "Restart as Administrator" action. If the user declines, the
+          scan still runs and says plainly what it could not see.
+
+          uiAccess stays false. RatScan flags *other* processes holding UIAccess
+          as an input-control risk; it must not hold one itself.
+        -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">permonitorv2,permonitor</dpiAwareness>
+      <!--
+        Process paths on a compromised machine are frequently deep and deliberately
+        long; without this the collectors would silently truncate or fail on them.
+      -->
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+
+</assembly>
