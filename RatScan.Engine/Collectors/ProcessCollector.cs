@@ -117,6 +117,9 @@ public sealed class ProcessCollector : IProcessCollector
 
         var merged = Merge(results, cancellationToken);
 
+        MarkMissingSources(merged, results);
+        ConfirmHiddenCandidates(merged, results, cancellationToken);
+
         Enrich(merged, options, cancellationToken);
 
         return new ProcessCollectionResult
@@ -205,6 +208,91 @@ public sealed class ProcessCollector : IProcessCollector
         }
 
         return merged;
+    }
+
+    /// <summary>
+    /// Records, per process, which successful sources failed to report it. Only
+    /// sources that actually succeeded count — a failed source is silent about
+    /// everything and must not read as though it deliberately omitted anything.
+    /// </summary>
+    private static void MarkMissingSources(
+        Dictionary<uint, ProcessFact> merged, IReadOnlyList<ProcessSourceResult> results)
+    {
+        var succeeded = results.Where(r => r.Succeeded).Select(r => r.Kind).ToList();
+
+        foreach (var pid in merged.Keys.ToList())
+        {
+            var fact = merged[pid];
+            merged[pid] = fact with
+            {
+                MissingFrom = succeeded.Except(fact.SeenBy).ToList(),
+            };
+        }
+    }
+
+    /// <summary>
+    /// Second pass over processes the PID probe found but no listing source reported.
+    /// <para>
+    /// Re-runs the listing sources and re-probes each candidate. A process that
+    /// started midway through the first pass shows up this time and is cleared;
+    /// anything still alive and still absent from every listing interface has no
+    /// benign explanation left, and only then is <see cref="ProcessFact.ConfirmedHidden"/>
+    /// set. Without this the detector would fire on ordinary process churn, which on a
+    /// busy desktop happens constantly.
+    /// </para>
+    /// </summary>
+    private static void ConfirmHiddenCandidates(
+        Dictionary<uint, ProcessFact> merged,
+        IReadOnlyList<ProcessSourceResult> results,
+        CancellationToken cancellationToken)
+    {
+        var listingKinds = results
+            .Where(r => r.Succeeded && r.Kind != ProcessSourceKind.BruteForceOpen)
+            .Select(r => r.Kind)
+            .ToHashSet();
+
+        if (listingKinds.Count == 0)
+        {
+            // Nothing to contradict the probe with; concealment cannot be established.
+            return;
+        }
+
+        var candidates = merged.Values
+            .Where(p => p.VerifiedAlive == true && !p.SeenBy.Any(listingKinds.Contains))
+            .Select(p => p.Pid)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        var reListed = new[]
+            {
+                new ToolhelpProcessSource().Enumerate(cancellationToken),
+                new NtProcessSource().Enumerate(cancellationToken),
+                new PsapiProcessSource().Enumerate(cancellationToken),
+            }
+            .Where(r => r.Succeeded)
+            .SelectMany(r => r.Processes.Select(p => p.Pid))
+            .ToHashSet();
+
+        var reProbe = new BruteForceProcessSource().Enumerate(cancellationToken);
+        var stillAlive = reProbe.Processes
+            .Where(p => p.VerifiedAlive == true)
+            .Select(p => p.Pid)
+            .ToHashSet();
+
+        foreach (var pid in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var confirmed = stillAlive.Contains(pid) && !reListed.Contains(pid);
+            if (confirmed)
+            {
+                merged[pid] = merged[pid] with { ConfirmedHidden = true };
+            }
+        }
     }
 
     private static void Enrich(

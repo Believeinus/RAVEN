@@ -76,6 +76,31 @@ public sealed class RemoteSurfaceTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// Regression: the surface state must come from real configuration, never from the
+    /// size of the evidence list. Adding a "we checked and found nothing" evidence
+    /// entry once flipped portproxy to Enabled on a machine with no forwarding rules.
+    /// </summary>
+    [Fact]
+    public void Portproxy_with_no_rules_reads_as_disabled_despite_carrying_evidence()
+    {
+        var result = new RemoteSurfaceCollector().Collect();
+        var portproxy = result.Surfaces.Single(s => s.Id == "windows.portproxy");
+
+        output.WriteLine($"portproxy: {portproxy.State} — {portproxy.Detail}");
+        foreach (var e in portproxy.EvidenceChain)
+        {
+            output.WriteLine($"  {e.Label} = {e.Value}");
+        }
+
+        Assert.NotEmpty(portproxy.EvidenceChain);
+
+        if (portproxy.Detail is not null && portproxy.Detail.Contains("No forwarding rules"))
+        {
+            Assert.Equal(SurfaceState.Disabled, portproxy.State);
+        }
+    }
+
     [Fact]
     public void Shadow_policy_absence_is_not_reported_as_enabled()
     {

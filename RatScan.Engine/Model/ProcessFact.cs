@@ -49,6 +49,22 @@ public sealed record ProcessFact
     /// <summary>True when a handle could not be opened, so most fields are unknown.</summary>
     public bool Inaccessible { get; init; }
 
+    /// <summary>
+    /// Set only after a second, independent confirmation pass established that this
+    /// process is alive and still absent from every enumeration interface.
+    /// <para>
+    /// The confirmation exists to defeat the one benign explanation for a probe-only
+    /// PID: ordinary process churn. A process that starts midway through a scan can
+    /// legitimately appear in the probe but not in a list captured moments earlier.
+    /// Re-running the listing sources against the specific candidate removes that
+    /// explanation, so anything still absent afterwards is concealment.
+    /// </para>
+    /// </summary>
+    public bool ConfirmedHidden { get; init; }
+
+    /// <summary>Enumeration sources that ran successfully but did not report this process.</summary>
+    public IReadOnlyList<ProcessSourceKind> MissingFrom { get; init; } = [];
+
     public bool HasNetworkActivity => Connections.Count > 0;
 
     public bool IsListening => Connections.Any(c => c.IsListener);

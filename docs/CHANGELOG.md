@@ -49,6 +49,26 @@ All notable changes to RatScan are recorded here. Format follows
   monitors, netsh helpers, and WMI permanent event subscriptions.
 - `DriverCollector` merging loaded kernel modules with registry driver registrations,
   including native path resolution (`\SystemRoot\`, `\??\`, bare relative).
+- `ConcealmentDetector` — cross-view detection of processes hidden from one kernel
+  interface but not another, selective hiding, and kernel drivers loaded without a
+  service registration. Reports a scan-integrity finding when too few sources
+  succeed to cross-check at all.
+- Confirmation pass in `ProcessCollector`: probe-only PIDs are re-checked against a
+  fresh enumeration before being called hidden, so ordinary process churn cannot
+  produce a concealment finding.
+- 56-product remote-access catalogue as embedded YAML, covering remote-desktop, RMM,
+  tunnellers, mesh VPNs, screen-streaming, remote-input and known RAT families.
+- `RemoteAccessToolDetector` with layered matching — confidence scales with how many
+  independent signals agree (name, signer, expected listening port) — and plain-language
+  explanations written in terms of what someone can do to the user.
+- `SystemIntegrityProbe` reading driver signature enforcement, test-signing mode,
+  kernel debug mode and kernel-debugger presence; plus Secure Boot and HVCI.
+- `IntegrityAssessor`, separating conditions that let a scan be *deceived* from those
+  that merely reduce its completeness.
+- `ScoringEngine` producing coverage-qualified verdicts. `VerdictLevel` has no `Clean`
+  member by construction; the honesty clause appears on every verdict.
+- `ScanOrchestrator` running a complete scan end to end. Collector and detector
+  failures are non-fatal and become named blind spots.
 
 ### Fixed
 
@@ -65,6 +85,16 @@ All notable changes to RatScan are recorded here. Format follows
 - Driver census reported a phantom "loaded without registration" module when run
   unelevated, an artefact of withheld kernel image bases. The loaded view is now
   dropped entirely in that state rather than partially populated.
+- Port forwarding reported as enabled on a machine with no forwarding rules. The fix
+  guaranteeing every surface carries evidence appended a placeholder entry, and state
+  was derived from the evidence count — so the completeness fix broke the reading it
+  was decorating.
+- Four near-identical findings for one product with multiple helper processes.
+  Findings are now deduplicated per product, strongest match winning.
+- Correctly-signed TightVNC was reported as an impostor at Critical severity because
+  the catalogue held a stale publisher string. Impersonation is now claimed only when
+  a binary fails signature verification outright; an unrecognised-but-valid signer
+  lowers confidence and is disclosed as a limitation of RatScan's own data.
 
 ### Changed
 

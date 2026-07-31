@@ -311,9 +311,15 @@ public sealed class RemoteSurfaceCollector : IRemoteSurfaceCollector
             }
         }
 
+        // Captured BEFORE the placeholder below is appended. Deriving state from
+        // entries.Count afterwards flipped this surface to Enabled on a machine with no
+        // forwarding rules at all — the evidence-completeness fix silently broke the
+        // reading it was decorating.
+        var ruleCount = entries.Count;
+
         // A clean result still records that the check ran. "We looked here and found
         // nothing" and "we never looked" must not render identically to the user.
-        if (entries.Count == 0)
+        if (ruleCount == 0)
         {
             entries.Add(Evidence.Of(
                 "Forwarding rules",
@@ -325,10 +331,10 @@ public sealed class RemoteSurfaceCollector : IRemoteSurfaceCollector
         {
             Id = "windows.portproxy",
             Name = "Port forwarding (netsh portproxy)",
-            State = entries.Count > 0 ? SurfaceState.Enabled : SurfaceState.Disabled,
+            State = ruleCount > 0 ? SurfaceState.Enabled : SurfaceState.Disabled,
             Capability = "Silently forwards an inbound port to another host or port, "
                          + "which can tunnel traffic past firewall rules",
-            Detail = entries.Count > 0 ? $"{entries.Count} forwarding rule(s) configured" : "No forwarding rules",
+            Detail = ruleCount > 0 ? $"{ruleCount} forwarding rule(s) configured" : "No forwarding rules",
             EvidenceChain = entries,
             DisableCommand = "netsh interface portproxy reset",
         };

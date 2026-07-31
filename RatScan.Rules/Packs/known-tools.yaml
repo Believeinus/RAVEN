@@ -1,0 +1,545 @@
+# RatScan — known remote-access software catalogue
+#
+# Identification data only. Nothing here is a verdict: presence of a tool is a fact,
+# and whether it is wanted is the user's call. The `abuse` field records how often a
+# product turns up in intrusions and support scams relative to legitimate use — it
+# raises attention, it does not convict.
+#
+# `capabilities` drives the plain-language explanation the user actually reads, so it
+# is written in terms of what someone can do to them, not feature names.
+#
+# Matching is deliberately conservative: a process name alone is weak evidence (any
+# file can be renamed), so a match reports which signals agreed and the detector
+# scores accordingly.
+
+version: 1
+updated: 2026-07-31
+
+tools:
+  # ---------------------------------------------------------------- remote desktop
+  - id: tightvnc
+    name: TightVNC
+    vendor: GlavSoft
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [tvnserver.exe, tvnviewer.exe]
+    services: [tvnserver]
+    # Substring match: shipped builds have been signed as both "OOO GlavSoft" and
+    # "GlavSoft LLC" over the years.
+    signers: ["GlavSoft"]
+    ports: [5800, 5900]
+
+  - id: realvnc
+    name: RealVNC
+    vendor: RealVNC
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [vncserver.exe, winvnc4.exe, vncserverui.exe]
+    services: [vncserver]
+    signers: ["RealVNC Limited"]
+    ports: [5900]
+
+  - id: ultravnc
+    name: UltraVNC
+    vendor: UltraVNC
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [winvnc.exe, uvnc_service.exe]
+    services: [uvnc_service]
+    ports: [5800, 5900]
+
+  - id: anydesk
+    name: AnyDesk
+    vendor: AnyDesk Software GmbH
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [anydesk.exe]
+    services: [AnyDesk]
+    signers: ["AnyDesk Software GmbH", "philandro Software GmbH"]
+    ports: [7070]
+    notes: >-
+      Very heavily used in tech-support scams. A portable copy running from Downloads
+      with no installation is the classic signature of one in progress.
+
+  - id: teamviewer
+    name: TeamViewer
+    vendor: TeamViewer
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [teamviewer.exe, teamviewer_service.exe, tv_w32.exe, tv_x64.exe]
+    services: [TeamViewer]
+    signers: ["TeamViewer Germany GmbH", "TeamViewer GmbH"]
+    ports: [5938]
+
+  - id: rustdesk
+    name: RustDesk
+    vendor: RustDesk
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [rustdesk.exe]
+    services: [RustDesk]
+    drivers: [RustDeskIddDriver]
+    ports: [21115, 21116, 21117, 21118, 21119]
+
+  - id: chrome-remote-desktop
+    name: Chrome Remote Desktop
+    vendor: Google
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, unattended]
+    processes: [remoting_host.exe, remote_assistance_host.exe]
+    services: [chromoting]
+    signers: ["Google LLC"]
+
+  - id: splashtop
+    name: Splashtop
+    vendor: Splashtop
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [srservice.exe, srserver.exe, srmanager.exe, splashtopstreamer.exe]
+    services: [SplashtopRemoteService]
+    signers: ["Splashtop Inc."]
+
+  - id: netsupport-manager
+    name: NetSupport Manager
+    vendor: NetSupport
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [client32.exe, pcictlui.exe]
+    services: [Client32]
+    signers: ["NetSupport Ltd"]
+    notes: >-
+      Legitimate product, but its client is redistributed as a commodity RAT
+      (NetSupport RAT). Presence outside a managed corporate estate is unusual.
+
+  - id: remote-utilities
+    name: Remote Utilities
+    vendor: Remote Utilities LLC
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [rutserv.exe, rfusclient.exe]
+    services: [RManService]
+    signers: ["Remote Utilities LLC"]
+
+  - id: ammyy-admin
+    name: Ammyy Admin
+    vendor: Ammyy
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [aa_v3.exe, ammyy_admin.exe]
+    notes: Frequently distributed by support scammers; often unsigned.
+
+  - id: radmin
+    name: Radmin
+    vendor: Famatech
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [rserver3.exe, radmin.exe]
+    services: [RServer3]
+    signers: ["Famatech Corp"]
+    ports: [4899]
+
+  - id: supremo
+    name: Supremo
+    vendor: Nanosystems
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [supremo.exe, supremoservice.exe]
+    services: [SupremoService]
+    signers: ["Nanosystems S.r.l."]
+
+  - id: dwservice
+    name: DWService
+    vendor: DWService
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [dwagent.exe, dwagsvc.exe]
+    services: [DWAgent]
+
+  - id: getscreen
+    name: Getscreen.me
+    vendor: Getscreen
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [getscreen.exe]
+
+  - id: todesk
+    name: ToDesk
+    vendor: ToDesk
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [todesk.exe, todesk_service.exe]
+    services: [ToDesk_Service]
+
+  - id: sunlogin
+    name: Sunlogin / Oray
+    vendor: Oray
+    category: remote-desktop
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [sunloginclient.exe]
+    services: [SunloginClient]
+
+  - id: anyviewer
+    name: AnyViewer
+    vendor: AOMEI
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [anyviewer.exe, rcservice.exe]
+
+  - id: hoptodesk
+    name: HopToDesk
+    vendor: HopToDesk
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [hoptodesk.exe]
+
+  - id: zoho-assist
+    name: Zoho Assist
+    vendor: Zoho
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [zohomeeting.exe, za_access.exe, zohoassist.exe]
+    signers: ["ZOHO Corporation Private Limited"]
+
+  - id: screenconnect
+    name: ConnectWise ScreenConnect
+    vendor: ConnectWise
+    category: rmm
+    abuse: high
+    capabilities: [screen-view, input-control, file-transfer, command-execution, unattended]
+    processes: [screenconnect.clientservice.exe, screenconnect.windowsclient.exe]
+    signers: ["ConnectWise, LLC", "ScreenConnect Software"]
+    notes: Service names embed a per-instance GUID, so match on process and signer.
+
+  - id: logmein
+    name: LogMeIn
+    vendor: GoTo
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [logmein.exe, lmiguardiansvc.exe, ramaint.exe]
+    services: [LMIGuardianSvc, LogMeIn]
+
+  - id: gotomypc
+    name: GoToMyPC
+    vendor: GoTo
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [g2comm.exe, g2svc.exe, g2tray.exe, g2pre.exe]
+    services: [GoToMyPC]
+
+  - id: beyondtrust
+    name: BeyondTrust Remote Support
+    vendor: BeyondTrust
+    category: rmm
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, command-execution, unattended]
+    processes: [bomgar-scc.exe, bomgar-rdp.exe]
+    signers: ["BeyondTrust Corporation", "Bomgar Corporation"]
+
+  - id: isl-online
+    name: ISL Online
+    vendor: ISL Online
+    category: remote-desktop
+    abuse: medium
+    capabilities: [screen-view, input-control, file-transfer, unattended]
+    processes: [isllight.exe, islalwaysonmonitor.exe]
+
+  # ------------------------------------------------------------------------- RMM
+  - id: atera
+    name: Atera Agent
+    vendor: Atera Networks
+    category: rmm
+    abuse: high
+    capabilities: [command-execution, software-install, unattended]
+    processes: [ateraagent.exe]
+    services: [AteraAgent]
+    signers: ["Atera Networks Ltd"]
+    notes: Bundles Splashtop for the remote-desktop half.
+
+  - id: ninjarmm
+    name: NinjaOne (NinjaRMM)
+    vendor: NinjaOne
+    category: rmm
+    abuse: medium
+    capabilities: [command-execution, software-install, unattended]
+    processes: [ninjarmmagent.exe]
+    services: [NinjaRMMAgent]
+
+  - id: n-able-take-control
+    name: N-able Take Control
+    vendor: N-able
+    category: rmm
+    abuse: high
+    capabilities: [screen-view, input-control, command-execution, unattended]
+    processes: [basupsrvc.exe, basupsrvccnfg.exe, batakcontrolsrv.exe]
+    services: [BASupportExpressStandaloneService]
+    signers: ["N-able Technologies", "SolarWinds MSP"]
+
+  - id: kaseya
+    name: Kaseya VSA Agent
+    vendor: Kaseya
+    category: rmm
+    abuse: high
+    capabilities: [command-execution, software-install, unattended]
+    processes: [agentmon.exe, kausrtsk.exe]
+
+  - id: datto-rmm
+    name: Datto RMM
+    vendor: Datto
+    category: rmm
+    abuse: medium
+    capabilities: [command-execution, software-install, unattended]
+    processes: [aemagent.exe]
+    services: [CagService]
+
+  - id: pulseway
+    name: Pulseway
+    vendor: MMSOFT Design
+    category: rmm
+    abuse: medium
+    capabilities: [command-execution, unattended]
+    processes: [pcmonitorsrv.exe]
+    services: ["PC Monitor"]
+    signers: ["MMSOFT Design Ltd."]
+
+  - id: action1
+    name: Action1
+    vendor: Action1
+    category: rmm
+    abuse: medium
+    capabilities: [command-execution, software-install, unattended]
+    processes: [action1_agent.exe]
+
+  - id: syncro
+    name: Syncro
+    vendor: Syncro
+    category: rmm
+    abuse: medium
+    capabilities: [command-execution, unattended]
+    processes: [syncro.service.exe]
+
+  - id: level-io
+    name: Level.io
+    vendor: Level
+    category: rmm
+    abuse: medium
+    capabilities: [screen-view, command-execution, unattended]
+    processes: [level.exe]
+
+  - id: tacticalrmm
+    name: Tactical RMM
+    vendor: AmidaWare
+    category: rmm
+    abuse: high
+    capabilities: [command-execution, unattended]
+    processes: [tacticalrmm.exe]
+
+  - id: meshcentral
+    name: MeshCentral Agent
+    vendor: MeshCentral
+    category: rmm
+    abuse: high
+    capabilities: [screen-view, input-control, command-execution, unattended]
+    processes: [meshagent.exe]
+    services: ["Mesh Agent"]
+
+  # ---------------------------------------------------- screen streaming / display
+  - id: parsec
+    name: Parsec
+    vendor: Parsec Cloud
+    category: screen-stream
+    abuse: low
+    capabilities: [screen-view, input-control, unattended]
+    processes: [parsecd.exe, pservice.exe]
+    services: [Parsec]
+    signers: ["Parsec Cloud, Inc."]
+
+  - id: sunshine
+    name: Sunshine
+    vendor: LizardByte
+    category: screen-stream
+    abuse: low
+    capabilities: [screen-view, input-control, unattended]
+    processes: [sunshine.exe]
+    services: [SunshineService]
+
+  - id: spacedesk
+    name: spacedesk
+    vendor: datronicsoft
+    category: screen-stream
+    abuse: low
+    capabilities: [screen-view]
+    processes: [spacedeskservice.exe]
+    services: [spacedeskService]
+    notes: >-
+      Extends or mirrors this machine's display to another device over the network.
+      Legitimate second-monitor software, but it does stream the screen off-box.
+
+  # ------------------------------------------------------------------ remote input
+  - id: mouse-without-borders
+    name: Mouse Without Borders
+    vendor: Microsoft
+    category: remote-input
+    abuse: low
+    capabilities: [input-control, clipboard-sharing, file-transfer]
+    processes: [mousewithoutborders.exe, mousewithoutborderssvc.exe, mousewithoutbordershelper.exe]
+    signers: ["Microsoft Corporation"]
+    notes: >-
+      Part of Microsoft PowerToys. Lets another PC on the network drive this machine's
+      keyboard and mouse and share its clipboard. Benign by design and genuinely
+      useful, but it is remote input control and belongs in the inventory.
+
+  - id: synergy
+    name: Synergy / Barrier
+    vendor: Symless
+    category: remote-input
+    abuse: low
+    capabilities: [input-control, clipboard-sharing]
+    processes: [synergys.exe, synergyc.exe, barriers.exe, barrierc.exe]
+
+  # -------------------------------------------------------------------- tunnellers
+  - id: ngrok
+    name: ngrok
+    vendor: ngrok
+    category: tunneler
+    abuse: high
+    capabilities: [inbound-tunnel]
+    processes: [ngrok.exe]
+    notes: >-
+      Exposes a local port to the public internet, bypassing the firewall and NAT
+      entirely. Legitimate developer tool, routinely abused to reach a machine that
+      would otherwise be unreachable.
+
+  - id: frp
+    name: frp (fast reverse proxy)
+    vendor: fatedier
+    category: tunneler
+    abuse: high
+    capabilities: [inbound-tunnel]
+    processes: [frpc.exe, frps.exe]
+
+  - id: chisel
+    name: chisel
+    vendor: jpillora
+    category: tunneler
+    abuse: high
+    capabilities: [inbound-tunnel]
+    processes: [chisel.exe]
+
+  - id: cloudflared
+    name: cloudflared
+    vendor: Cloudflare
+    category: tunneler
+    abuse: medium
+    capabilities: [inbound-tunnel]
+    processes: [cloudflared.exe]
+
+  - id: playit
+    name: playit.gg
+    vendor: playit.gg
+    category: tunneler
+    abuse: medium
+    capabilities: [inbound-tunnel]
+    processes: [playit.exe, playit-agent.exe]
+
+  - id: localtonet
+    name: LocalToNet
+    vendor: LocalToNet
+    category: tunneler
+    abuse: high
+    capabilities: [inbound-tunnel]
+    processes: [localtonet.exe]
+
+  # ------------------------------------------------------------------ mesh network
+  - id: tailscale
+    name: Tailscale
+    vendor: Tailscale
+    category: mesh-vpn
+    abuse: low
+    capabilities: [network-access]
+    processes: [tailscaled.exe, tailscale-ipn.exe]
+    services: [Tailscale]
+
+  - id: zerotier
+    name: ZeroTier
+    vendor: ZeroTier
+    category: mesh-vpn
+    abuse: medium
+    capabilities: [network-access]
+    processes: [zerotier-one_x64.exe]
+    services: [ZeroTierOneService]
+
+  - id: hamachi
+    name: LogMeIn Hamachi
+    vendor: GoTo
+    category: mesh-vpn
+    abuse: medium
+    capabilities: [network-access]
+    processes: [hamachi-2.exe, hamachi-2-ui.exe]
+    services: [Hamachi2Svc]
+
+  # --------------------------------------------------------- known RAT families
+  # Names are a weak signal here — these rename freely — so they act as a booster on
+  # top of behavioural evidence rather than as identification on their own.
+  - id: quasar-rat
+    name: Quasar RAT
+    category: rat-family
+    abuse: high
+    capabilities: [screen-view, input-control, keylogging, file-transfer, unattended]
+    processes: [quasar.exe]
+
+  - id: asyncrat
+    name: AsyncRAT
+    category: rat-family
+    abuse: high
+    capabilities: [screen-view, keylogging, file-transfer, unattended]
+    processes: [asyncrat.exe]
+
+  - id: remcos
+    name: Remcos
+    category: rat-family
+    abuse: high
+    capabilities: [screen-view, input-control, keylogging, file-transfer, unattended]
+    processes: [remcos.exe]
+
+  - id: njrat
+    name: njRAT
+    category: rat-family
+    abuse: high
+    capabilities: [screen-view, keylogging, file-transfer, unattended]
+    processes: [njrat.exe]
+
+  - id: xworm
+    name: XWorm
+    category: rat-family
+    abuse: high
+    capabilities: [screen-view, keylogging, file-transfer, unattended]
+    processes: [xworm.exe]
+
+  - id: dcrat
+    name: DcRat
+    category: rat-family
+    abuse: high
+    capabilities: [screen-view, keylogging, file-transfer, unattended]
+    processes: [dcrat.exe]
