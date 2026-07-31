@@ -74,6 +74,26 @@ All notable changes to RatScan are recorded here. Format follows
   aggravating factors, never presented as proof), broad DLL injection as the
   structural footprint of a global input hook, and UIAccess held without a valid
   signature.
+- WPF dashboard: verdict card, findings with expandable evidence chains, Scan
+  Integrity panel, and the blind-spot list. Integrity signals render red when a
+  failure means the scan could have been *deceived* and amber when it merely narrows
+  coverage. A scan that throws states that nothing was established.
+- Guided remediation — end a process and its children, stop and disable a service,
+  remove an auto-start value, disable a Windows remote surface. Confirmation is a
+  required executor parameter, and the previewed command is exactly what runs.
+- `LiveWatcher` + `LiveAlertRules` (`RatScan.Etw`): real-time ETW over kernel
+  process, image-load and TCP events, with a bounded ring buffer. Alerts fire once
+  per tool per session and only for catalogued remote-access software starting.
+  Failure to start reports the reason and the remedy rather than failing silently.
+
+### Known gaps
+
+- The ETW live watch is **engine-only**: not wired into the UI, no tray icon, and its
+  elevated path is unverified (tests exercise only the unelevated failure branch).
+- Five referenced-but-unused packages: `WPF-UI`, `CommunityToolkit.Mvvm`,
+  `Hardcodet.NotifyIcon.Wpf`, `Microsoft.Data.Sqlite`, `Microsoft.Extensions.Hosting`.
+- Three `PersistenceSurface` members are declared without a collector: `Service`,
+  `ActiveSetup`, `PowerShellProfile`.
 
 ### Fixed
 
