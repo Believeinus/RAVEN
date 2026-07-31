@@ -4,12 +4,14 @@ using System.Windows.Media;
 using RatScan.Engine;
 using RatScan.Engine.Collectors;
 using RatScan.Engine.Model;
+using RatScan.Engine.Remediation;
 
 namespace RatScan.UI;
 
 public partial class MainWindow : Window
 {
     private readonly ScanOrchestrator _orchestrator = new();
+    private readonly RemediationExecutor _remediation = new();
 
     public MainWindow()
     {
@@ -99,6 +101,64 @@ public partial class MainWindow : Window
         Title = $"RatScan — {result.Verdict} ({result.Duration.TotalSeconds:F1}s)";
     }
 
+    /// <summary>
+    /// Every action passes through here, and every action shows the exact command
+    /// before it runs. The dialog is not a formality: RatScan can be wrong, and the
+    /// person at the keyboard is the one who knows whether a program is theirs.
+    /// </summary>
+    private void OnFixClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: RemediationAction action })
+        {
+            return;
+        }
+
+        var elevationWarning = action.RequiresElevation && !IsElevated()
+            ? "\n\nThis needs Administrator rights and RatScan is not elevated, so it will "
+              + "probably fail. Restart as Administrator first."
+            : string.Empty;
+
+        var prompt =
+            $"{action.Description}\n\n"
+            + $"This will run:\n{action.PreviewCommand}\n\n"
+            + $"Risk: {RiskText(action.Risk)}"
+            + (action.Caveat is null ? string.Empty : $"\n\nNote: {action.Caveat}")
+            + elevationWarning
+            + "\n\nGo ahead?";
+
+        var answer = MessageBox.Show(
+            this, prompt, action.Title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var outcome = _remediation.Execute(action, confirmed: true);
+
+        MessageBox.Show(
+            this,
+            outcome.Message + (outcome.Detail is null ? string.Empty : $"\n\n{outcome.Detail}"),
+            outcome.Succeeded ? "Done" : "Did not complete",
+            MessageBoxButton.OK,
+            outcome.Succeeded ? MessageBoxImage.Information : MessageBoxImage.Error);
+
+        if (outcome.Succeeded)
+        {
+            HeadlineText.Text = "Run the scan again to see the current state.";
+            SummaryText.Text = "The findings above are from before that change and are now out of "
+                               + "date.";
+        }
+    }
+
+    private static string RiskText(RemediationRisk risk) => risk switch
+    {
+        RemediationRisk.Reversible => "reversible — you can undo this",
+        RemediationRisk.Disruptive => "disruptive — unsaved work in that program may be lost",
+        _ => "consequential — this may affect how Windows or other software behaves",
+    };
+
     private static Color VerdictColour(VerdictLevel verdict) => verdict switch
     {
         VerdictLevel.CompromiseIndicated => Color.FromRgb(0xE5, 0x5C, 0x5C),
@@ -118,6 +178,7 @@ public sealed record FindingRow
     public required string Explanation { get; init; }
     public string? Recommendation { get; init; }
     public required IReadOnlyList<string> Evidence { get; init; }
+    public required IReadOnlyList<RatScan.Engine.Remediation.RemediationAction> Actions { get; init; }
 
     public Visibility RecommendationVisibility =>
         string.IsNullOrWhiteSpace(Recommendation) ? Visibility.Collapsed : Visibility.Visible;
@@ -148,6 +209,7 @@ public sealed record FindingRow
         Evidence = finding.EvidenceChain
             .Select(e => $"{e.Label}: {e.Value}" + (e.Source is null ? string.Empty : $"   [{e.Source}]"))
             .ToList(),
+        Actions = finding.Actions,
     };
 }
 

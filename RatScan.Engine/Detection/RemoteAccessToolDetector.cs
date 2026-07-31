@@ -165,7 +165,56 @@ public sealed class RemoteAccessToolDetector : IDetector
                   + "allowlist it. If you did not install it, or no longer use it, remove it: while it "
                   + "runs, anyone with its credentials can connect.",
             EvidenceChain = evidence,
+            Actions = ActionsFor(tool, process, impersonating),
         };
+    }
+
+    /// <summary>
+    /// Proposes what can be done about a detected tool. Ending the process is offered
+    /// for everything; it is the one action that stops access immediately, and the
+    /// caveat states plainly that it does not prevent a restart.
+    /// </summary>
+    private static List<Remediation.RemediationAction> ActionsFor(
+        KnownTool tool, ProcessFact process, bool impersonating)
+    {
+        var actions = new List<Remediation.RemediationAction>
+        {
+            new()
+            {
+                Kind = Remediation.RemediationKind.KillProcess,
+                Title = $"End {process.Name}",
+                Description = impersonating
+                    ? $"Immediately terminates '{process.Name}' (PID {process.Pid}) and any processes "
+                      + "it started. This cuts off any connection it currently has."
+                    : $"Immediately terminates {tool.Name} (PID {process.Pid}) and any processes it "
+                      + "started. Anyone currently connected through it is disconnected.",
+                PreviewCommand = $"Stop-Process -Id {process.Pid} -Force   # and child processes",
+                Risk = Remediation.RemediationRisk.Disruptive,
+                Caveat = "This stops it now but does not prevent it starting again. If it is "
+                         + "installed as a service or has an auto-start entry, disable that too.",
+                Pid = process.Pid,
+                RequiresElevation = process.Integrity >= RatScan.Native.Processes.IntegrityLevel.High,
+            },
+        };
+
+        foreach (var service in tool.Services)
+        {
+            actions.Add(new Remediation.RemediationAction
+            {
+                Kind = Remediation.RemediationKind.DisableService,
+                Title = $"Stop and disable the {service} service",
+                Description = $"Stops the '{service}' service and sets it never to start again, so "
+                              + $"{tool.Name} does not come back after a restart.",
+                PreviewCommand = $"sc.exe stop \"{service}\"\nsc.exe config \"{service}\" start= disabled",
+                Risk = Remediation.RemediationRisk.Consequential,
+                Caveat = "The software stays installed. Uninstall it properly if you do not want it "
+                         + "at all.",
+                ServiceName = service,
+                RequiresElevation = true,
+            });
+        }
+
+        return actions;
     }
 
     private static Severity SeverityFor(KnownTool tool, bool impersonating, bool listening)

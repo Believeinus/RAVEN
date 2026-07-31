@@ -165,6 +165,23 @@ public sealed class ScanOrchestrator : IScanOrchestrator
                     : "Confirm this is something you rely on.",
                 EvidenceChain = surface.EvidenceChain,
                 MitreTechnique = "T1021",
+                Actions = surface.DisableCommand is null
+                    ? []
+                    :
+                    [
+                        new Remediation.RemediationAction
+                        {
+                            Kind = Remediation.RemediationKind.DisableWindowsSurface,
+                            Title = $"Turn off {surface.Name}",
+                            Description = $"Disables this Windows feature. {surface.Capability} — "
+                                          + "that capability goes away.",
+                            PreviewCommand = surface.DisableCommand,
+                            Risk = Remediation.RemediationRisk.Consequential,
+                            Caveat = "If you or someone who supports this machine relies on this "
+                                     + "feature, turning it off will break that.",
+                            RequiresElevation = true,
+                        },
+                    ],
             };
         }
     }

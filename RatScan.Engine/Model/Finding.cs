@@ -93,6 +93,12 @@ public sealed record Finding
 
     /// <summary>MITRE ATT&amp;CK technique, where one applies.</summary>
     public string? MitreTechnique { get; init; }
+
+    /// <summary>
+    /// What RatScan can do about this, if the user asks. Proposals only — nothing here
+    /// runs until it is explicitly confirmed.
+    /// </summary>
+    public IReadOnlyList<Remediation.RemediationAction> Actions { get; init; } = [];
 }
 
 /// <summary>
