@@ -69,6 +69,11 @@ All notable changes to RatScan are recorded here. Format follows
   member by construction; the honesty clause appears on every verdict.
 - `ScanOrchestrator` running a complete scan end to end. Collector and detector
   failures are non-fatal and become named blind spots.
+- `ModuleInventory` enumerating loaded DLLs per process, including 32-bit modules.
+- `SurveillanceDetector` — screen-capture correlation (capability plus at least two
+  aggravating factors, never presented as proof), broad DLL injection as the
+  structural footprint of a global input hook, and UIAccess held without a valid
+  signature.
 
 ### Fixed
 

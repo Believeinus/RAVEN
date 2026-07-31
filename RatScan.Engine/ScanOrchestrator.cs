@@ -44,7 +44,12 @@ public sealed class ScanOrchestrator : IScanOrchestrator
         _drivers = drivers ?? new DriverCollector();
         _integrity = integrity ?? new IntegrityAssessor();
         _scoring = scoring ?? new ScoringEngine();
-        _detectors = detectors ?? [new ConcealmentDetector(), new RemoteAccessToolDetector()];
+        _detectors = detectors ??
+        [
+            new ConcealmentDetector(),
+            new RemoteAccessToolDetector(),
+            new SurveillanceDetector(),
+        ];
     }
 
     public ScanResult Run(ScanOptions? options = null, CancellationToken cancellationToken = default)

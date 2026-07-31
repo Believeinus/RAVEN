@@ -24,11 +24,19 @@ public sealed record ScanOptions
     /// </summary>
     public bool ProbePidSpace { get; init; } = true;
 
+    /// <summary>
+    /// Enumerate loaded DLLs per process. Required by the surveillance detector — both
+    /// screen-capture capability and injected input hooks are only visible in the
+    /// module list.
+    /// </summary>
+    public bool CollectModules { get; init; } = true;
+
     public static ScanOptions Quick => new()
     {
         VerifySignatures = false,
         ComputeHashes = false,
         ProbePidSpace = false,
+        CollectModules = false,
     };
 
     public static ScanOptions Full => new();
@@ -317,8 +325,14 @@ public sealed class ProcessCollector : IProcessCollector
 
             var detail = ProcessInspector.Inspect(pid);
 
+            var modules = options.CollectModules
+                ? ModuleInventory.Read(pid, cancellationToken)
+                : null;
+
             merged[pid] = merged[pid] with
             {
+                Modules = modules?.Modules ?? [],
+                ModulesReadable = modules?.Succeeded ?? false,
                 ImagePath = detail.ImagePath,
                 SessionId = merged[pid].SessionId ?? detail.SessionId,
                 IsElevated = detail.IsElevated,

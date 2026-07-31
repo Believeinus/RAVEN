@@ -34,6 +34,15 @@ public sealed record ProcessFact
     public IReadOnlyList<Connection> Connections { get; init; } = [];
 
     /// <summary>
+    /// DLLs loaded into this process. Empty when module collection was disabled or
+    /// the process could not be opened — <see cref="ModulesReadable"/> distinguishes
+    /// the two, since "loaded nothing" and "we could not look" are different facts.
+    /// </summary>
+    public IReadOnlyList<LoadedModule> Modules { get; init; } = [];
+
+    public bool ModulesReadable { get; init; }
+
+    /// <summary>
     /// Which enumeration sources reported this process. The heart of concealment
     /// detection: a process seen by some interfaces and not others is hiding.
     /// </summary>
