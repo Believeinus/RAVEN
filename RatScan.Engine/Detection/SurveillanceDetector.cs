@@ -1,3 +1,4 @@
+using System.Globalization;
 using RatScan.Engine.Model;
 using RatScan.Native.Signing;
 
@@ -134,7 +135,7 @@ public sealed class SurveillanceDetector : IDetector
         var evidence = new List<Evidence>
         {
             Evidence.Of("Process", process.Name),
-            Evidence.Of("PID", process.Pid.ToString()),
+            Evidence.Of("PID", process.Pid.ToString(CultureInfo.InvariantCulture)),
             Evidence.Of("Screen-capture modules", string.Join(", ", captureModules), "module list"),
         };
 
@@ -143,7 +144,8 @@ public sealed class SurveillanceDetector : IDetector
         {
             factors.Add("shows no visible window");
             evidence.Add(Evidence.Of("Visible windows",
-                process.Windows?.VisibleWindows.ToString() ?? "none", "EnumWindows"));
+                process.Windows?.VisibleWindows.ToString(CultureInfo.InvariantCulture) ?? "none",
+                "EnumWindows"));
         }
 
         var outbound = process.Connections.Any(c => !c.IsListener && c.RemoteAddress is not null);
@@ -151,7 +153,8 @@ public sealed class SurveillanceDetector : IDetector
         {
             factors.Add("holds an outbound network connection");
             evidence.Add(Evidence.Of("Outbound connections",
-                process.Connections.Count(c => !c.IsListener).ToString(), "GetExtendedTcpTable"));
+                process.Connections.Count(c => !c.IsListener).ToString(CultureInfo.InvariantCulture),
+                "GetExtendedTcpTable"));
         }
 
         var untrusted = process.Signature is null
@@ -185,6 +188,10 @@ public sealed class SurveillanceDetector : IDetector
             Category = FindingCategory.ScreenOrInputSurveillance,
             Subject = process.Name,
             Pid = process.Pid,
+
+            // The binary, not the PID. Muting this must mean "this program is mine",
+            // which stays true across restarts and false if the file is replaced.
+            IdentityKey = process.ImagePath,
             MitreTechnique = "T1113",
             Explanation =
                 $"'{process.Name}' has loaded the Windows components used to read the contents of the "
@@ -248,6 +255,7 @@ public sealed class SurveillanceDetector : IDetector
                 Confidence = Confidence.Possible,
                 Category = FindingCategory.ScreenOrInputSurveillance,
                 Subject = entry.Name,
+                IdentityKey = entry.Path,
                 MitreTechnique = "T1056.004",
                 Explanation =
                     $"The library '{entry.Name}' is present in {entry.Programs.Count} unrelated programs "
@@ -314,6 +322,7 @@ public sealed class SurveillanceDetector : IDetector
                 Category = FindingCategory.ScreenOrInputSurveillance,
                 Subject = p.Name,
                 Pid = p.Pid,
+                IdentityKey = p.ImagePath,
                 MitreTechnique = "T1056.001",
                 Explanation =
                     "This process holds a UIAccess token, which allows it to send input to and read "

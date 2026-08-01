@@ -83,6 +83,36 @@ public sealed record Finding
 
     public uint? Pid { get; init; }
 
+    /// <summary>
+    /// The stable thing this finding is about, for allowlist matching — normally the
+    /// full path of the file involved.
+    /// <para>
+    /// Deliberately not the title, the PID or the subject. Those move: a PID changes
+    /// every reboot, and a title carries counts ("loaded into 9 programs") that shift
+    /// between scans. An allowlist keyed on any of them would either stop matching for
+    /// no reason or, worse, keep matching something that had changed underneath it.
+    /// Null means the finding cannot be identified stably enough to mute.
+    /// </para>
+    /// </summary>
+    public string? IdentityKey { get; init; }
+
+    /// <summary>
+    /// Whether the user may mute this finding.
+    /// <para>
+    /// Two categories are excluded on purpose. <see cref="FindingCategory.Concealment"/>
+    /// because nothing benign produces a cross-view discrepancy — offering to silence
+    /// "something on this machine is hiding" would hand the user a button that defeats
+    /// the reason the tool exists. <see cref="FindingCategory.ScanIntegrity"/> because
+    /// those findings describe what the scan could <em>not</em> see; muting one converts
+    /// a known gap in coverage into apparent silence, which is the exact lie this
+    /// product is built to avoid.
+    /// </para>
+    /// </summary>
+    public bool CanBeMuted =>
+        IdentityKey is not null
+        && Category is not FindingCategory.Concealment
+        && Category is not FindingCategory.ScanIntegrity;
+
     /// <summary>Plain-language explanation of why this was flagged.</summary>
     public required string Explanation { get; init; }
 

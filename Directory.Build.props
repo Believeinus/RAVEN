@@ -31,7 +31,17 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      Must stay false. WPF builds a caret the moment a TextBox takes focus, and that
+      asks Windows for the current input language: on a machine set to English (India)
+      that is culture 0x4009, which invariant mode refuses with CultureNotFoundException
+      and takes the process down. Every text box in the app would crash it, for any user
+      whose keyboard layout is not invariant.
+
+      Kept as an explicit false rather than deleted so nobody re-adds it for publish
+      size — it costs ICU in a self-contained build, and that is the correct trade.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 

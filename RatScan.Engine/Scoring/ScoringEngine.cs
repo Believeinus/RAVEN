@@ -1,17 +1,26 @@
+using System.Globalization;
 using System.Text;
+using RatScan.Engine.Allowlist;
 using RatScan.Engine.Model;
 
 namespace RatScan.Engine.Scoring;
 
 public interface IScoringEngine
 {
+    /// <param name="findings">Findings that count — the allowlist has already been applied.</param>
+    /// <param name="allowlist">
+    /// What the allowlist withheld, or null when nothing was muted. Passed in rather
+    /// than applied here so the verdict and its counterfactual are computed from the
+    /// same place.
+    /// </param>
     ScanResult Score(
         IReadOnlyList<Finding> findings,
         IReadOnlyList<Blindspot> blindspots,
         IReadOnlyList<string> surfacesExamined,
         IntegrityReport integrity,
         DateTime startedUtc,
-        TimeSpan duration);
+        TimeSpan duration,
+        AllowlistApplication? allowlist = null);
 }
 
 /// <summary>
@@ -31,18 +40,29 @@ public sealed class ScoringEngine : IScoringEngine
         IReadOnlyList<string> surfacesExamined,
         IntegrityReport integrity,
         DateTime startedUtc,
-        TimeSpan duration)
+        TimeSpan duration,
+        AllowlistApplication? allowlist = null)
     {
+        var suppressed = allowlist?.Suppressed ?? [];
         var verdict = DecideVerdict(findings);
+
+        // The verdict the machine would have got with nothing muted. Computed here,
+        // beside the real one, so the two can never drift out of step.
+        var unmuted = suppressed.Count == 0
+            ? verdict
+            : DecideVerdict([.. findings, .. suppressed.Select(s => s.Finding)]);
 
         return new ScanResult
         {
             Verdict = verdict,
-            Headline = BuildHeadline(verdict, findings, surfacesExamined, blindspots),
-            Summary = BuildSummary(verdict, findings, blindspots, integrity),
+            Headline = BuildHeadline(verdict, findings, surfacesExamined, blindspots, suppressed.Count),
+            Summary = BuildSummary(verdict, findings, blindspots, integrity, suppressed, unmuted),
             Integrity = integrity,
             Findings = findings.OrderByDescending(f => f.Severity).ThenByDescending(f => f.Confidence).ToList(),
             Blindspots = blindspots,
+            Suppressed = suppressed,
+            StaleAllowlistEntries = allowlist?.Stale ?? [],
+            VerdictIfNothingMuted = unmuted,
             SurfacesExamined = surfacesExamined,
             StartedUtc = startedUtc,
             Duration = duration,
@@ -78,12 +98,20 @@ public sealed class ScoringEngine : IScoringEngine
         VerdictLevel verdict,
         IReadOnlyList<Finding> findings,
         IReadOnlyList<string> surfaces,
-        IReadOnlyList<Blindspot> blindspots)
+        IReadOnlyList<Blindspot> blindspots,
+        int mutedCount)
     {
         var coverage = $"across {surfaces.Count} surface{(surfaces.Count == 1 ? "" : "s")}"
                        + (blindspots.Count > 0
                            ? $", with {blindspots.Count} blind spot{(blindspots.Count == 1 ? "" : "s")}"
-                           : ", with no blind spots recorded");
+                           : ", with no blind spots recorded")
+
+                       // Muting belongs in the headline, not in a panel further down.
+                       // The quiet verdict is the one people stop reading after, and it
+                       // is the one a mute is most likely to have produced.
+                       + (mutedCount > 0
+                           ? $", and {mutedCount} finding{(mutedCount == 1 ? "" : "s")} you have muted"
+                           : "");
 
         return verdict switch
         {
@@ -108,7 +136,9 @@ public sealed class ScoringEngine : IScoringEngine
         VerdictLevel verdict,
         IReadOnlyList<Finding> findings,
         IReadOnlyList<Blindspot> blindspots,
-        IntegrityReport integrity)
+        IntegrityReport integrity,
+        IReadOnlyList<SuppressedFinding> suppressed,
+        VerdictLevel unmutedVerdict)
     {
         var text = new StringBuilder();
 
@@ -155,6 +185,23 @@ public sealed class ScoringEngine : IScoringEngine
                         + "these are listed individually.");
         }
 
+        if (suppressed.Count > 0)
+        {
+            text.Append($" {suppressed.Count} finding{(suppressed.Count == 1 ? " is" : "s are")} "
+                        + "muted by your allowlist and not counted above; "
+                        + $"{(suppressed.Count == 1 ? "it is" : "they are")} listed with the reason "
+                        + "you gave.");
+
+            // The counterfactual is stated only when it is load-bearing — when the
+            // user's own decision is the reason this verdict reads as calmly as it does.
+            if (unmutedVerdict != verdict)
+            {
+                text.Append(CultureInfo.InvariantCulture,
+                    $" Without {(suppressed.Count == 1 ? "it" : "them")} this scan would "
+                    + $"read: {Describe(unmutedVerdict)}.");
+            }
+        }
+
         var undermining = integrity.Undermining.ToList();
         if (undermining.Count > 0)
         {
@@ -174,4 +221,13 @@ public sealed class ScoringEngine : IScoringEngine
 
     private static int Count(IReadOnlyList<Finding> findings, Severity severity) =>
         findings.Count(f => f.Severity == severity);
+
+    /// <summary>Verdict as a phrase that fits mid-sentence, for the muting counterfactual.</summary>
+    private static string Describe(VerdictLevel verdict) => verdict switch
+    {
+        VerdictLevel.CompromiseIndicated => "evidence of compromise found",
+        VerdictLevel.RemoteAccessActive => "an active remote-access surface was found",
+        VerdictLevel.ReviewRecommended => "remote-access capability present, review recommended",
+        _ => "no evidence of remote access found",
+    };
 }

@@ -6,7 +6,7 @@ All notable changes to RatScan are recorded here. Format follows
 
 ---
 
-## [Unreleased] — 2026-07-31
+## [Unreleased] — 2026-08-01
 
 ### Added
 
@@ -85,18 +85,65 @@ All notable changes to RatScan are recorded here. Format follows
   process, image-load and TCP events, with a bounded ring buffer. Alerts fire once
   per tool per session and only for catalogued remote-access software starting.
   Failure to start reports the reason and the remedy rather than failing silently.
+- Local state in SQLite at `%LOCALAPPDATA%\RatScan\ratscan.db` (schema v2), with one
+  place owning the schema for both stores. Every `CommandText` is a compile-time
+  constant and every observed value is bound as a parameter — nothing read off a
+  scanned machine can reach the database as syntax.
+- **Allowlist.** Entries are pinned to the SHA-256 of the file they excuse, so replacing
+  the file brings the finding straight back; each records why it was created, and the
+  whole list is shown back on every scan. `Finding.CanBeMuted` structurally refuses
+  `Concealment` and `ScanIntegrity` findings — nothing benign produces a cross-view
+  discrepancy, and muting a coverage finding would convert a known gap into silence.
+  A pin that cannot be verified fails open: the finding is shown, annotated with why the
+  mute did not apply.
+- `ScanResult.VerdictIfNothingMuted` — the verdict the machine would have received with
+  nothing muted, computed beside the real one so the two cannot drift. Muting is
+  disclosed in the **headline**, and the counterfactual is spelled out in the summary
+  whenever the user's own allowlist is the reason the verdict reads as calmly as it does.
+- `ScanOrchestrator.ReapplyAllowlist` re-scores an existing scan, so muting takes effect
+  immediately instead of after another full scan. Muting is applied after detection and
+  before scoring: detectors never learn the allowlist exists, so a muted thing that
+  changes is still noticed.
+- **Scan history and diff.** Scans are recorded and compared against the previous one:
+  what appeared, what went, what changed severity. Identity — not the title — decides
+  whether two findings are the same one. A disappearance is never reported as an
+  improvement when this scan saw less: lost elevation, more blind spots or more mutes
+  each attach a named caveat.
+- **Export** to HTML and JSON, with the UI stating what the file contains — program
+  paths, ports, hashes, allowlist notes — before it is written rather than after. The
+  report carries its own coverage and limits, and machine-controlled text is escaped.
 
 ### Known gaps
 
 - The ETW live watch is **engine-only**: not wired into the UI, no tray icon, and its
   elevated path is unverified (tests exercise only the unelevated failure branch).
-- Five referenced-but-unused packages: `WPF-UI`, `CommunityToolkit.Mvvm`,
-  `Hardcodet.NotifyIcon.Wpf`, `Microsoft.Data.Sqlite`, `Microsoft.Extensions.Hosting`.
+- Four referenced-but-unused packages: `WPF-UI`, `CommunityToolkit.Mvvm`,
+  `Hardcodet.NotifyIcon.Wpf`, `Microsoft.Extensions.Hosting`. (`Microsoft.Data.Sqlite`
+  came off this list — it now backs the allowlist and history.)
 - Three `PersistenceSurface` members are declared without a collector: `Service`,
   `ActiveSetup`, `PowerShellProfile`.
+- The JSON export path has not been driven through the UI; only HTML has. The format is
+  chosen from the file extension, and `ExportTests` covers both.
+- `RatScan.UI.csproj` still carries a comment claiming the app "runs elevated by
+  manifest". The manifest is `asInvoker`.
 
 ### Fixed
 
+- **`InvariantGlobalization` crashed the app on any non-invariant keyboard layout.** WPF
+  builds a caret the moment a `TextBox` takes focus, which asks Windows for the current
+  input language; on English (India) that is culture `0x4009`, which invariant mode
+  refuses with `CultureNotFoundException`, taking the process down. Every text box in the
+  app, for every affected user. Now an explicit `false` with the reason recorded beside
+  it, so it is not re-added to save publish size.
+- Selective hiding fired **Critical on `docker.exe`** during ordinary process churn. The
+  listing sources run one after another, so a process that starts or exits between two of
+  them is present in one and absent from the next — the exact shape of a hooked
+  enumeration API. It is now confirmed by a second pass, as full hiding already was, with
+  the re-listing kept **per source** rather than unioned: confirming selective hiding
+  means asking which interface is still missing the process, not merely whether any
+  interface saw it. Churn does not reproduce; a hooked enumeration path does. The
+  finding's recommendation changed with it, from "re-run the scan" to "investigate this
+  binary offline", because the tool has now done the re-run itself.
 - PID probe reported ~327 phantom hidden processes on a clean machine. Two causes:
   reading a last-error value clobbered by CsWin32's `OpenProcess_SafeHandle` wrapper,
   and counting zombie process objects (exited, but still openable while a handle

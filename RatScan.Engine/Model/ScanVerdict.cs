@@ -79,6 +79,29 @@ public sealed record ScanResult
     public IReadOnlyList<Finding> Findings { get; init; } = [];
     public IReadOnlyList<Blindspot> Blindspots { get; init; } = [];
 
+    /// <summary>
+    /// Findings the user's allowlist withheld from <see cref="Findings"/> and from the
+    /// verdict. Carried on the result rather than discarded: a muted finding is still
+    /// something this machine is doing, and the user has to be able to see what they
+    /// have decided not to be told about.
+    /// </summary>
+    public IReadOnlyList<Allowlist.SuppressedFinding> Suppressed { get; init; } = [];
+
+    /// <summary>Allowlist entries that no longer applied, with the reason each failed.</summary>
+    public IReadOnlyList<Allowlist.StaleAllowlistEntry> StaleAllowlistEntries { get; init; } = [];
+
+    /// <summary>
+    /// What the verdict would have been with nothing muted.
+    /// <para>
+    /// The counterfactual exists so the product can never quietly downgrade itself.
+    /// An allowlist that can turn "remote access is active" into "no evidence found"
+    /// without saying so is a worse failure than not having one.
+    /// </para>
+    /// </summary>
+    public VerdictLevel VerdictIfNothingMuted { get; init; }
+
+    public bool MutingChangedVerdict => VerdictIfNothingMuted != Verdict;
+
     /// <summary>Named areas that were successfully examined.</summary>
     public IReadOnlyList<string> SurfacesExamined { get; init; } = [];
 

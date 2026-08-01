@@ -76,6 +76,7 @@ public sealed class ConcealmentDetectorTests(ITestOutputHelper output)
             Name = "sneaky.exe",
             SeenBy = [ProcessSourceKind.NtQuerySystemInformation, ProcessSourceKind.BruteForceOpen],
             MissingFrom = [ProcessSourceKind.Toolhelp, ProcessSourceKind.Psapi],
+            ConfirmedSelectiveHiding = true,
         };
 
         var findings = new ConcealmentDetector().Detect(ContextWith(selective)).ToList();
@@ -85,8 +86,33 @@ public sealed class ConcealmentDetectorTests(ITestOutputHelper output)
 
         Assert.Equal(Severity.Critical, finding.Severity);
 
-        // Not Confirmed: a process exiting mid-scan produces the same shape.
+        // Not Confirmed: a process could in principle churn across both passes.
         Assert.Equal(Confidence.Likely, finding.Confidence);
+    }
+
+    /// <summary>
+    /// The second regression of the same kind as the probe-only one below, and the one
+    /// that actually fired on this machine: <c>docker.exe</c> was reported by Toolhelp
+    /// and NtQuerySystemInformation but not PSAPI, purely because the sources run one
+    /// after another and it started in between. That produced a Critical finding and a
+    /// <c>CompromiseIndicated</c> verdict on a healthy desktop.
+    /// <para>
+    /// An unconfirmed partial disagreement must produce nothing at all.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Silent_when_a_partial_disagreement_was_not_reproduced_by_the_second_pass()
+    {
+        var churn = new ProcessFact
+        {
+            Pid = 21844,
+            Name = "docker.exe",
+            SeenBy = [ProcessSourceKind.Toolhelp, ProcessSourceKind.NtQuerySystemInformation],
+            MissingFrom = [ProcessSourceKind.Psapi],
+            ConfirmedSelectiveHiding = false,
+        };
+
+        Assert.Empty(new ConcealmentDetector().Detect(ContextWith(churn)));
     }
 
     [Fact]
@@ -246,6 +272,94 @@ public sealed class ConcealmentOnThisMachineTests(ITestOutputHelper output)
 
         var confirmed = processes.Processes.Count(p => p.ConfirmedHidden);
         output.WriteLine($"processes={processes.Processes.Count} confirmedHidden={confirmed} findings={findings.Count}");
+
+        Assert.Empty(findings);
+    }
+
+    /// <summary>
+    /// Manufactures the exact condition that produced a false Critical on this machine:
+    /// heavy process churn while the enumeration sources run one after another.
+    /// <para>
+    /// The original failure was intermittent, which made it easy to dismiss as noise and
+    /// impossible to prove fixed by re-running the quiet test. This one creates the race
+    /// on purpose — dozens of processes starting and exiting across the collection — so
+    /// a regression here is a failure rather than a coin toss.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Process_churn_during_a_scan_produces_no_concealment_finding()
+    {
+        using var churning = new CancellationTokenSource();
+
+        var spawner = Task.Run(() =>
+        {
+            var spawned = 0;
+
+            while (!churning.IsCancellationRequested && spawned < 200)
+            {
+                try
+                {
+                    using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = "/c exit",
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                    });
+
+                    spawned++;
+                }
+                catch (Exception)
+                {
+                    // A spawn that fails is not what this test is measuring.
+                    break;
+                }
+            }
+
+            return spawned;
+        });
+
+        ProcessCollectionResult processes;
+
+        try
+        {
+            processes = new ProcessCollector().Collect(ScanOptions.Quick with { ProbePidSpace = true });
+        }
+        finally
+        {
+            churning.Cancel();
+        }
+
+        var spawnedCount = await spawner;
+
+        var findings = new ConcealmentDetector()
+            .Detect(new DetectionContext { Processes = processes })
+            .Where(f => f.Category == FindingCategory.Concealment)
+            .ToList();
+
+        var disagreements = processes.Processes.Count(
+            p => p.SeenBy.Any(k => k != ProcessSourceKind.BruteForceOpen)
+                 && p.MissingFrom.Any(k => k != ProcessSourceKind.BruteForceOpen));
+
+        output.WriteLine($"spawned={spawnedCount} processes={processes.Processes.Count}");
+        output.WriteLine($"first-pass partial disagreements={disagreements}");
+        output.WriteLine($"confirmed selective={processes.Processes.Count(p => p.ConfirmedSelectiveHiding)}");
+        output.WriteLine($"concealment findings={findings.Count}");
+
+        foreach (var f in findings)
+        {
+            output.WriteLine($"  {f.Severity}: {f.Title}");
+        }
+
+        // The point of the test: churn should generate raw disagreements and none of
+        // them should survive confirmation. If the first number is zero the run proved
+        // nothing, so say that rather than banking a green tick.
+        if (disagreements == 0)
+        {
+            output.WriteLine(
+                "NOTE: no partial disagreement occurred this run, so the confirmation pass "
+                + "was not actually exercised.");
+        }
 
         Assert.Empty(findings);
     }

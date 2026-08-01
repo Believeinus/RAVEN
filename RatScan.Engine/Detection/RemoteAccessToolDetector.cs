@@ -1,3 +1,4 @@
+using System.Globalization;
 using RatScan.Engine.Model;
 using RatScan.Rules;
 
@@ -73,7 +74,7 @@ public sealed class RemoteAccessToolDetector : IDetector
         var evidence = new List<Evidence>
         {
             Evidence.Of("Process", process.Name!, "process enumeration"),
-            Evidence.Of("PID", process.Pid.ToString()),
+            Evidence.Of("PID", process.Pid.ToString(CultureInfo.InvariantCulture)),
         };
 
         var signals = 1;
@@ -155,6 +156,10 @@ public sealed class RemoteAccessToolDetector : IDetector
             Category = FindingCategory.RemoteAccessSoftware,
             Subject = tool.Name,
             Pid = process.Pid,
+
+            // Muting is per-binary. "I installed TightVNC" is a statement about the
+            // copy on this machine, not about every future file called winvnc.exe.
+            IdentityKey = process.ImagePath,
             MitreTechnique = "T1219",
             Explanation = Explain(tool, process, impersonating, signerUnrecognised, portHits, status),
             Recommendation = impersonating

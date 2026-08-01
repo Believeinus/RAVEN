@@ -1,4 +1,5 @@
-﻿using Microsoft.Win32;
+using System.Globalization;
+using Microsoft.Win32;
 using RatScan.Engine.Model;
 using RatScan.Native.Network;
 using RatScan.Native.Services;
@@ -98,9 +99,10 @@ public sealed class RemoteSurfaceCollector : IRemoteSurfaceCollector
 
         var evidence = new List<Evidence>
         {
-            Evidence.Of("fDenyTSConnections", deny?.ToString() ?? "absent",
+            Evidence.Of("fDenyTSConnections", deny?.ToString(CultureInfo.InvariantCulture) ?? "absent",
                 $@"HKLM\{TerminalServerKey}"),
-            Evidence.Of("Listening port", port.ToString(), $@"HKLM\{RdpTcpKey}"),
+            Evidence.Of("Listening port", port.ToString(CultureInfo.InvariantCulture),
+                $@"HKLM\{RdpTcpKey}"),
             Evidence.Of("Network Level Authentication", nla == 1 ? "required" : "not required",
                 $@"HKLM\{RdpTcpKey}"),
             Evidence.Of("TermService running", running.ToString(), "SCM"),
@@ -164,7 +166,8 @@ public sealed class RemoteSurfaceCollector : IRemoteSurfaceCollector
             Detail = detail,
             EvidenceChain =
             [
-                Evidence.Of("Shadow", shadow?.ToString() ?? "not set", $@"HKLM\{TsPolicyKey}"),
+                Evidence.Of("Shadow", shadow?.ToString(CultureInfo.InvariantCulture) ?? "not set",
+                    $@"HKLM\{TsPolicyKey}"),
             ],
             DisableCommand =
                 @"Set-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name Shadow -Value 0",
@@ -260,7 +263,8 @@ public sealed class RemoteSurfaceCollector : IRemoteSurfaceCollector
             Detail = allow == 1 ? "Assistance invitations permitted" : "Assistance invitations blocked",
             EvidenceChain =
             [
-                Evidence.Of("fAllowToGetHelp", allow?.ToString() ?? "absent", $@"HKLM\{RemoteAssistanceKey}"),
+                Evidence.Of("fAllowToGetHelp", allow?.ToString(CultureInfo.InvariantCulture) ?? "absent",
+                    $@"HKLM\{RemoteAssistanceKey}"),
             ],
             DisableCommand =
                 @"Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance' -Name fAllowToGetHelp -Value 0",

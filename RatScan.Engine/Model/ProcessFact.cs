@@ -71,6 +71,21 @@ public sealed record ProcessFact
     /// </summary>
     public bool ConfirmedHidden { get; init; }
 
+    /// <summary>
+    /// Set only after a second pass reproduced a <em>partial</em> disagreement: some
+    /// listing interfaces still report this process and at least one that reported
+    /// others still does not.
+    /// <para>
+    /// Needed for the same reason as <see cref="ConfirmedHidden"/>, and learned the same
+    /// way. The listing sources run one after another, so a process that starts or exits
+    /// between two of them is present in one and absent from the next — which is exactly
+    /// the shape of selective hiding. On this machine that fired Critical on
+    /// <c>docker.exe</c> during ordinary churn. One pass cannot tell the two apart; a
+    /// second pass can, because churn does not reproduce and a hooked API does.
+    /// </para>
+    /// </summary>
+    public bool ConfirmedSelectiveHiding { get; init; }
+
     /// <summary>Enumeration sources that ran successfully but did not report this process.</summary>
     public IReadOnlyList<ProcessSourceKind> MissingFrom { get; init; } = [];
 

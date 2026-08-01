@@ -239,14 +239,20 @@ public sealed class ProcessCollector : IProcessCollector
     }
 
     /// <summary>
-    /// Second pass over processes the PID probe found but no listing source reported.
+    /// Second pass over every process whose first-pass view was inconsistent — absent
+    /// from all listing interfaces, or absent from only some of them.
     /// <para>
-    /// Re-runs the listing sources and re-probes each candidate. A process that
-    /// started midway through the first pass shows up this time and is cleared;
-    /// anything still alive and still absent from every listing interface has no
-    /// benign explanation left, and only then is <see cref="ProcessFact.ConfirmedHidden"/>
-    /// set. Without this the detector would fire on ordinary process churn, which on a
-    /// busy desktop happens constantly.
+    /// Re-runs the listing sources and re-probes each candidate. A process that started
+    /// or exited midway through the first pass resolves this time and is cleared;
+    /// anything that reproduces the same inconsistency has no benign explanation left,
+    /// and only then is <see cref="ProcessFact.ConfirmedHidden"/> or
+    /// <see cref="ProcessFact.ConfirmedSelectiveHiding"/> set.
+    /// </para>
+    /// <para>
+    /// Both shapes need this and for the same reason. The sources run sequentially, so
+    /// ordinary churn on a busy desktop manufactures both a probe-only PID and a
+    /// partial disagreement. Churn does not survive a second look; a hooked enumeration
+    /// path does.
     /// </para>
     /// </summary>
     private static void ConfirmHiddenCandidates(
@@ -265,25 +271,37 @@ public sealed class ProcessCollector : IProcessCollector
             return;
         }
 
-        var candidates = merged.Values
+        var fullyHidden = merged.Values
             .Where(p => p.VerifiedAlive == true && !p.SeenBy.Any(listingKinds.Contains))
             .Select(p => p.Pid)
             .ToList();
 
-        if (candidates.Count == 0)
+        // Reported by at least one listing interface and missed by at least one other
+        // that succeeded. Only listing interfaces count: the PID probe is not one, so
+        // absence from it says nothing.
+        var selective = merged.Values
+            .Where(p => p.SeenBy.Any(listingKinds.Contains)
+                        && p.MissingFrom.Any(listingKinds.Contains))
+            .Select(p => p.Pid)
+            .ToList();
+
+        if (fullyHidden.Count == 0 && selective.Count == 0)
         {
             return;
         }
 
-        var reListed = new[]
+        // Kept per source rather than unioned, because confirming selective hiding means
+        // asking which interface is still missing it, not merely whether anything saw it.
+        var rePass = new[]
             {
                 new ToolhelpProcessSource().Enumerate(cancellationToken),
                 new NtProcessSource().Enumerate(cancellationToken),
                 new PsapiProcessSource().Enumerate(cancellationToken),
             }
             .Where(r => r.Succeeded)
-            .SelectMany(r => r.Processes.Select(p => p.Pid))
-            .ToHashSet();
+            .ToDictionary(r => r.Kind, r => r.Processes.Select(p => p.Pid).ToHashSet());
+
+        var reListed = rePass.Values.SelectMany(pids => pids).ToHashSet();
 
         var reProbe = new BruteForceProcessSource().Enumerate(cancellationToken);
         var stillAlive = reProbe.Processes
@@ -291,16 +309,51 @@ public sealed class ProcessCollector : IProcessCollector
             .Select(p => p.Pid)
             .ToHashSet();
 
-        foreach (var pid in candidates)
+        foreach (var pid in fullyHidden)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var confirmed = stillAlive.Contains(pid) && !reListed.Contains(pid);
-            if (confirmed)
+            if (stillAlive.Contains(pid) && !reListed.Contains(pid))
             {
                 merged[pid] = merged[pid] with { ConfirmedHidden = true };
             }
         }
+
+        foreach (var pid in selective)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (ReproducesSelectiveHiding(merged[pid], rePass))
+            {
+                merged[pid] = merged[pid] with { ConfirmedSelectiveHiding = true };
+            }
+        }
+    }
+
+    /// <summary>
+    /// True when the second pass shows the same partial disagreement: still reported by
+    /// something, and still missing from an interface that missed it the first time.
+    /// <para>
+    /// Requiring the <em>same</em> interface to miss it again is deliberate. A hook
+    /// filters one specific enumeration path, so it fails the same way twice; churn
+    /// lands wherever the timing puts it.
+    /// </para>
+    /// </summary>
+    private static bool ReproducesSelectiveHiding(
+        ProcessFact fact, Dictionary<ProcessSourceKind, HashSet<uint>> rePass)
+    {
+        if (rePass.Count < 2)
+        {
+            // One surviving interface cannot disagree with itself.
+            return false;
+        }
+
+        var stillSeen = rePass.Any(source => source.Value.Contains(fact.Pid));
+
+        var stillMissing = fact.MissingFrom.Any(
+            kind => rePass.TryGetValue(kind, out var pids) && !pids.Contains(fact.Pid));
+
+        return stillSeen && stillMissing;
     }
 
     private static void Enrich(

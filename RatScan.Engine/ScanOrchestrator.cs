@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RatScan.Engine.Allowlist;
 using RatScan.Engine.Collectors;
 using RatScan.Engine.Detection;
 using RatScan.Engine.Model;
@@ -21,6 +22,9 @@ public interface IScanOrchestrator
 /// </summary>
 public sealed class ScanOrchestrator : IScanOrchestrator
 {
+    private const string AllowlistBlindspot = "Allowlist";
+    private const string AllowlistEvidenceSource = AllowlistFilter.EvidenceSource;
+
     private readonly IProcessCollector _processes;
     private readonly IRemoteSurfaceCollector _surfaces;
     private readonly IPersistenceCollector _persistence;
@@ -28,6 +32,8 @@ public sealed class ScanOrchestrator : IScanOrchestrator
     private readonly IIntegrityAssessor _integrity;
     private readonly IScoringEngine _scoring;
     private readonly IReadOnlyList<IDetector> _detectors;
+    private readonly IAllowlistStore? _allowlist;
+    private readonly AllowlistFilter _allowlistFilter;
 
     public ScanOrchestrator(
         IProcessCollector? processes = null,
@@ -36,8 +42,15 @@ public sealed class ScanOrchestrator : IScanOrchestrator
         IDriverCollector? drivers = null,
         IIntegrityAssessor? integrity = null,
         IScoringEngine? scoring = null,
-        IReadOnlyList<IDetector>? detectors = null)
+        IReadOnlyList<IDetector>? detectors = null,
+        IAllowlistStore? allowlist = null,
+        IFileHasher? hasher = null)
     {
+        // No store means nothing is muted. Detection has to work with no local state
+        // at all, and the direction to fail in is "show everything".
+        _allowlist = allowlist;
+        _allowlistFilter = new AllowlistFilter(hasher);
+
         _processes = processes ?? new ProcessCollector();
         _surfaces = surfaces ?? new RemoteSurfaceCollector();
         _persistence = persistence ?? new PersistenceCollector();
@@ -134,8 +147,88 @@ public sealed class ScanOrchestrator : IScanOrchestrator
 
         findings.AddRange(SurfaceFindings(surfaces));
 
+        // Muting happens after detection and before scoring, deliberately. Detectors
+        // must not know the allowlist exists — a detector that skips work because
+        // something is muted would stop noticing when the muted thing changed.
+        var allowlist = ApplyAllowlist(findings, blindspots);
+
         return _scoring.Score(
-            findings, blindspots, examined, integrity, startedUtc, Stopwatch.GetElapsedTime(clock));
+            allowlist.Active, blindspots, examined, integrity, startedUtc,
+            Stopwatch.GetElapsedTime(clock), allowlist);
+    }
+
+    /// <summary>
+    /// Re-applies the allowlist to a scan that has already run, so muting something
+    /// takes effect immediately instead of after another few seconds of scanning.
+    /// <para>
+    /// Re-scoring rather than editing the previous result: the verdict, the headline and
+    /// the muting counterfactual all have to be recomputed together, and a result whose
+    /// findings no longer match its own headline is worse than a slow refresh.
+    /// </para>
+    /// </summary>
+    public ScanResult ReapplyAllowlist(ScanResult previous)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+
+        // Findings come back from both lists — what is muted is a question for the
+        // allowlist to answer again from scratch, not a state carried forward.
+        var findings = previous.Findings
+            .Concat(previous.Suppressed.Select(s => s.Finding))
+            .Select(Unannotated)
+            .ToList();
+
+        var blindspots = previous.Blindspots.Where(b => b.Area != AllowlistBlindspot).ToList();
+        var allowlist = ApplyAllowlist(findings, blindspots);
+
+        return _scoring.Score(
+            allowlist.Active, blindspots, previous.SurfacesExamined, previous.Integrity,
+            previous.StartedUtc, previous.Duration, allowlist);
+    }
+
+    /// <summary>
+    /// Strips the note a previous pass may have attached about a stale allowlist entry,
+    /// so re-applying cannot stack the same explanation twice.
+    /// </summary>
+    private static Finding Unannotated(Finding finding) =>
+        finding.EvidenceChain.Any(e => e.Source == AllowlistEvidenceSource)
+            ? finding with
+            {
+                EvidenceChain = finding.EvidenceChain
+                    .Where(e => e.Source != AllowlistEvidenceSource)
+                    .ToList(),
+            }
+            : finding;
+
+    /// <summary>
+    /// Applies the user's allowlist. A store that cannot be read mutes nothing and
+    /// records a blind spot: the user believes some findings are suppressed, and a scan
+    /// that silently stopped honouring that is a different scan from the one they think
+    /// they are reading.
+    /// </summary>
+    private AllowlistApplication ApplyAllowlist(
+        IReadOnlyList<Finding> findings, List<Blindspot> blindspots)
+    {
+        if (_allowlist is null)
+        {
+            return new AllowlistApplication { Active = findings };
+        }
+
+        try
+        {
+            return _allowlistFilter.Apply(findings, _allowlist.All());
+        }
+        catch (Exception ex)
+        {
+            blindspots.Add(new Blindspot
+            {
+                Area = AllowlistBlindspot,
+                Reason = $"Your allowlist could not be read ({ex.GetType().Name}: {ex.Message}), so "
+                         + "nothing was muted. Findings you previously silenced are shown again.",
+                Remedy = "Check that %LOCALAPPDATA%\\RatScan is readable.",
+            });
+
+            return new AllowlistApplication { Active = findings };
+        }
     }
 
     /// <summary>
@@ -159,6 +252,11 @@ public sealed class ScanOrchestrator : IScanOrchestrator
                 Confidence = Confidence.Confirmed,
                 Category = FindingCategory.WindowsRemoteSurface,
                 Subject = surface.Name,
+
+                // A Windows feature is not a file, so this entry cannot be pinned to
+                // bytes. The allowlist says so on the entry rather than implying a
+                // stronger guarantee than it has.
+                IdentityKey = $"windows-surface:{surface.Id}",
                 Explanation = $"{surface.Capability}. Observed state: {surface.Detail}",
                 Recommendation = surface.DisableCommand is not null
                     ? $"If you do not use this, it can be turned off:\n{surface.DisableCommand}"

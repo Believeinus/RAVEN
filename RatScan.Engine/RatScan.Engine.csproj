@@ -29,6 +29,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Local state (allowlist now, scan history next) lives in one SQLite file under
+      %LOCALAPPDATA%. It sits in the engine rather than the UI because suppression has
+      to be applied before scoring, and the verdict must never depend on the shell.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
     <PackageReference Include="System.Management" Version="8.0.0" />

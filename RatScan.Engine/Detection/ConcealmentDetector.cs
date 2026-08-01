@@ -1,3 +1,4 @@
+using System.Globalization;
 using RatScan.Engine.Model;
 using RatScan.Native.Processes;
 
@@ -100,7 +101,7 @@ public sealed class ConcealmentDetector : IDetector
             + "including this one.",
         EvidenceChain =
         [
-            Evidence.Of("PID", process.Pid.ToString()),
+            Evidence.Of("PID", process.Pid.ToString(CultureInfo.InvariantCulture)),
             Evidence.Of("Confirmed alive", "yes", "OpenProcess + WaitForSingleObject"),
             Evidence.Of("Reported by", process.SeenBy.Count > 0
                 ? string.Join(", ", process.SeenBy)
@@ -117,6 +118,15 @@ public sealed class ConcealmentDetector : IDetector
     /// </summary>
     private static Finding? SelectivelyHidden(ProcessFact process)
     {
+        // A disagreement seen once is not evidence. The listing sources run one after
+        // another, so a process that starts or exits between two of them appears in one
+        // and not the next — indistinguishable, in a single pass, from a hooked API.
+        // Only a discrepancy the confirmation pass reproduced gets this far.
+        if (!process.ConfirmedSelectiveHiding)
+        {
+            return null;
+        }
+
         // The PID probe is not a listing interface; absence from it says nothing.
         var missingListings = process.MissingFrom
             .Where(k => k != ProcessSourceKind.BruteForceOpen)
@@ -145,17 +155,21 @@ public sealed class ConcealmentDetector : IDetector
                 $"This process is reported by {string.Join(", ", seenListings)} but not by "
                 + $"{string.Join(", ", missingListings)}. Windows should return a consistent answer "
                 + "across all of them. Selective absence is what happens when something hooks one "
-                + "enumeration path and misses the others. A process that exited during the scan "
-                + "can produce this pattern too, which is why the confidence is not absolute.",
+                + "enumeration path and misses the others. The ordinary explanation — a process "
+                + "starting or exiting partway through the scan — was ruled out by a second pass "
+                + "that found the same interface still missing it. Confidence is not absolute "
+                + "because a process can in principle churn across both passes.",
             Recommendation =
-                "Re-run the scan. If the same process reappears with the same inconsistency, treat "
-                + "it as concealment and investigate the binary offline.",
+                "Investigate this binary offline. A process that two Windows enumeration "
+                + "interfaces disagree about, twice, is not behaving normally.",
             EvidenceChain =
             [
-                Evidence.Of("PID", process.Pid.ToString()),
+                Evidence.Of("PID", process.Pid.ToString(CultureInfo.InvariantCulture)),
                 Evidence.Of("Name", process.Name ?? "unknown"),
                 Evidence.Of("Visible to", string.Join(", ", seenListings)),
                 Evidence.Of("Hidden from", string.Join(", ", missingListings)),
+                Evidence.Of("Second pass", "same interface still missing it",
+                    "re-enumeration"),
             ],
         };
     }
