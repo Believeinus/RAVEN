@@ -4,6 +4,43 @@
              xmlns:local="clr-namespace:RatScan.UI"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+
+        <!--
+            The palette and the default text style live here, at application scope, and
+            they need to stay here.
+
+            They were in MainWindow.Resources, and an implicit TextBlock style at window
+            scope does not reach TextBlocks created from a DataTemplate. Every directly
+            declared TextBlock was themed; every templated one silently fell back to
+            WPF's default black. So "RustDesk is running" rendered near-black on a
+            near-black card while the paragraph directly beneath it, which carries an
+            explicit colour, looked correct — which is why the bug is invisible when
+            reading the XAML.
+
+            Any default text colour added at window scope inherits the same trap.
+        -->
+        <SolidColorBrush x:Key="Ink" Color="#E6E8EC" />
+        <SolidColorBrush x:Key="Muted" Color="#8B93A1" />
+        <SolidColorBrush x:Key="Panel" Color="#161A21" />
+        <SolidColorBrush x:Key="Line" Color="#242A34" />
+        <SolidColorBrush x:Key="Accent" Color="#4C8DFF" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <!--
+            Every ScrollViewer in the app scrolls by hand. WPF's built-in wheel handling
+            jumps a fixed distance per notch and ignores how far the gesture actually
+            went, so a precision touchpad - which reports many small deltas per swipe -
+            gets a full jump for each one and the content flies. Scrolling by the delta
+            instead makes the movement track the finger.
+        -->
+        <Style TargetType="ScrollViewer">
+            <EventSetter Event="PreviewMouseWheel" Handler="OnScrollViewerPreviewMouseWheel" />
+        </Style>
+
     </Application.Resources>
 </Application>

@@ -1,12 +1,17 @@
+using System.Collections.Concurrent;
+using System.Globalization;
 using System.Management;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using RatScan.Engine.Model;
+using RatScan.Native.Signing;
 
 namespace RatScan.Engine.Collectors;
 
 public interface IPersistenceCollector
 {
-    PersistenceResult Collect(CancellationToken cancellationToken = default);
+    PersistenceResult Collect(bool verifySignatures = true, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -31,8 +36,11 @@ public sealed class PersistenceCollector : IPersistenceCollector
     private const string LsaKey = @"SYSTEM\CurrentControlSet\Control\Lsa";
     private const string PrintMonitorsKey = @"SYSTEM\CurrentControlSet\Control\Print\Monitors";
     private const string NetshKey = @"SOFTWARE\Microsoft\Netsh";
+    private const string ServicesKey = @"SYSTEM\CurrentControlSet\Services";
+    private const string ActiveSetupKey = @"SOFTWARE\Microsoft\Active Setup\Installed Components";
 
-    public PersistenceResult Collect(CancellationToken cancellationToken = default)
+    public PersistenceResult Collect(
+        bool verifySignatures = true, CancellationToken cancellationToken = default)
     {
         var entries = new List<PersistenceEntry>();
         var blindspots = new List<Blindspot>();
@@ -48,8 +56,244 @@ public sealed class PersistenceCollector : IPersistenceCollector
         CollectComHijacks(entries, cancellationToken);
         CollectWmiSubscriptions(entries, blindspots, cancellationToken);
         CollectScheduledTasks(entries, blindspots, cancellationToken);
+        CollectAutoStartServices(entries, cancellationToken);
+        CollectActiveSetup(entries);
+        CollectPowerShellProfiles(entries);
+
+        if (verifySignatures)
+        {
+            VerifySignatures(entries, cancellationToken);
+        }
 
         return new PersistenceResult { Entries = entries, Blindspots = blindspots };
+    }
+
+    /// <summary>
+    /// Attaches Authenticode facts to every entry that names a file on disk.
+    /// <para>
+    /// Without this the collector reports <em>what</em> starts automatically but nothing
+    /// about whether it is what it claims to be, and the detector's signer check has
+    /// nothing to read. An auto-start entry pointing at an unsigned binary in a user-
+    /// writable folder is a materially different statement from the same entry pointing
+    /// at a catalog-signed component of Windows.
+    /// </para>
+    /// <para>
+    /// Verified once per distinct path rather than once per entry: auto-start entries
+    /// share images heavily — a machine hosting forty services out of one
+    /// <c>svchost.exe</c> would otherwise pay for forty identical verifications.
+    /// </para>
+    /// <para>
+    /// INVARIANT: a path that cannot be verified keeps
+    /// <see cref="SignatureStatus.Unknown"/>, which is not
+    /// <see cref="SignatureStatus.Unsigned"/>. A file that is locked, deleted, or on a
+    /// disconnected drive must never reach a rule as "this is not signed" — that is the
+    /// privilege-limitation-as-observation mistake, and here it would accuse the user's
+    /// own software.
+    /// </para>
+    /// </summary>
+    private static void VerifySignatures(
+        List<PersistenceEntry> entries, CancellationToken cancellationToken)
+    {
+        var distinct = entries
+            .Select(e => e.ImagePath)
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var signatures = new ConcurrentDictionary<string, SignatureInfo>(StringComparer.OrdinalIgnoreCase);
+
+        Parallel.ForEach(
+            distinct,
+            new ParallelOptions { CancellationToken = cancellationToken },
+            path => signatures[path!] = AuthenticodeVerifier.Verify(path!));
+
+        for (var i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].ImagePath is { } path && signatures.TryGetValue(path, out var signature))
+            {
+                entries[i] = entries[i] with { Signature = signature };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Services set to start without anyone asking.
+    /// <para>
+    /// The oldest persistence mechanism on Windows and still the most common one for
+    /// remote-access software, because a service starts before any user logs in and
+    /// survives them logging out. Read from the registry rather than the service
+    /// control manager: the registry gives the image path directly, and it is the same
+    /// place the SCM reads from, so an unelevated caller still sees the configuration
+    /// even where it cannot query the running service.
+    /// </para>
+    /// </summary>
+    private static void CollectAutoStartServices(
+        List<PersistenceEntry> entries, CancellationToken cancellationToken)
+    {
+        using var services = RegistryKey
+            .OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64)
+            .OpenSubKey(ServicesKey);
+
+        if (services is null)
+        {
+            return;
+        }
+
+        foreach (var name in services.GetSubKeyNames())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var service = services.OpenSubKey(name);
+            if (service is null)
+            {
+                continue;
+            }
+
+            // 0 boot, 1 system, 2 automatic. 3 is manual and 4 disabled: neither starts
+            // on its own, so neither is persistence.
+            if (service.GetValue("Start") is not int start || start > 2)
+            {
+                continue;
+            }
+
+            // Kernel drivers (type 1/2) are the driver census's subject, not this one.
+            // Counting them here would double-report every driver on the machine.
+            if (service.GetValue("Type") is int type && type is 1 or 2)
+            {
+                continue;
+            }
+
+            var command = service.GetValue("ImagePath")?.ToString();
+
+            entries.Add(new PersistenceEntry
+            {
+                Surface = PersistenceSurface.Service,
+                Scope = PersistenceScope.Machine,
+                Name = name,
+                Command = command,
+                ImagePath = ExtractExecutable(command),
+                Location = $@"HKLM\{ServicesKey}\{name}",
+                EvidenceChain =
+                [
+                    Evidence.Of(name, command ?? "(no image path)", $@"HKLM\{ServicesKey}\{name}"),
+                    Evidence.Of("Start type", StartTypeName(start), "registry"),
+                ],
+            });
+        }
+    }
+
+    private static string StartTypeName(int start) => start switch
+    {
+        0 => "boot",
+        1 => "system",
+        _ => "automatic",
+    };
+
+    /// <summary>
+    /// Active Setup: commands Windows runs once per user, the first time each user logs
+    /// in. Rarely examined, and it survives a profile being recreated.
+    /// </summary>
+    private static void CollectActiveSetup(List<PersistenceEntry> entries)
+    {
+        RegistryView[] views = [RegistryView.Registry64, RegistryView.Registry32];
+
+        foreach (var view in views)
+        {
+            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var components = baseKey.OpenSubKey(ActiveSetupKey);
+
+            if (components is null)
+            {
+                continue;
+            }
+
+            foreach (var name in components.GetSubKeyNames())
+            {
+                using var component = components.OpenSubKey(name);
+
+                // Only StubPath actually runs anything. A component without one is
+                // bookkeeping, and recording it would bury the ones that execute.
+                if (component?.GetValue("StubPath")?.ToString() is not { } stub
+                    || string.IsNullOrWhiteSpace(stub))
+                {
+                    continue;
+                }
+
+                entries.Add(new PersistenceEntry
+                {
+                    Surface = PersistenceSurface.ActiveSetup,
+                    Scope = PersistenceScope.Machine,
+                    Name = component.GetValue(null)?.ToString() is { Length: > 0 } friendly
+                        ? friendly
+                        : name,
+                    Command = stub,
+                    ImagePath = ExtractExecutable(stub),
+                    Location = $@"HKLM\{ActiveSetupKey}\{name} ({view})",
+                    EvidenceChain = [Evidence.Of("StubPath", stub, $@"HKLM\{ActiveSetupKey}\{name}")],
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// PowerShell profile scripts, which run on every shell start.
+    /// <para>
+    /// Only recorded when the file exists — a profile path is defined whether or not
+    /// anything is there, and reporting the path alone would manufacture an entry out
+    /// of a default.
+    /// </para>
+    /// </summary>
+    private static void CollectPowerShellProfiles(List<PersistenceEntry> entries)
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+        (string Path, PersistenceScope Scope)[] profiles =
+        [
+            (Path.Combine(windows, @"System32\WindowsPowerShell\v1.0\profile.ps1"), PersistenceScope.Machine),
+            (Path.Combine(windows, @"System32\WindowsPowerShell\v1.0\Microsoft.PowerShell_profile.ps1"), PersistenceScope.Machine),
+            (Path.Combine(documents, @"WindowsPowerShell\profile.ps1"), PersistenceScope.User),
+            (Path.Combine(documents, @"WindowsPowerShell\Microsoft.PowerShell_profile.ps1"), PersistenceScope.User),
+            (Path.Combine(documents, @"PowerShell\profile.ps1"), PersistenceScope.User),
+            (Path.Combine(documents, @"PowerShell\Microsoft.PowerShell_profile.ps1"), PersistenceScope.User),
+        ];
+
+        foreach (var (path, scope) in profiles)
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            long length;
+            try
+            {
+                length = new FileInfo(path).Length;
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            entries.Add(new PersistenceEntry
+            {
+                Surface = PersistenceSurface.PowerShellProfile,
+                Scope = scope,
+                Name = Path.GetFileName(path),
+                Command = path,
+                ImagePath = path,
+                Location = path,
+                EvidenceChain =
+                [
+                    Evidence.Of("Profile script", path, "filesystem"),
+                    Evidence.Of("Size", $"{length} bytes", "filesystem"),
+                ],
+            });
+        }
     }
 
     private static void CollectRunKeys(List<PersistenceEntry> entries, CancellationToken cancellationToken)
@@ -120,15 +364,23 @@ public sealed class PersistenceCollector : IPersistenceCollector
 
             foreach (var file in Directory.EnumerateFiles(folder))
             {
+                var target = ResolveShortcut(file);
+
                 entries.Add(new PersistenceEntry
                 {
                     Surface = PersistenceSurface.StartupFolder,
                     Scope = scope,
                     Name = Path.GetFileName(file),
                     Command = file,
-                    ImagePath = file,
+                    ImagePath = target ?? file,
                     Location = folder,
-                    EvidenceChain = [Evidence.Of("File", file, "Startup folder")],
+                    EvidenceChain = target is null
+                        ? [Evidence.Of("File", file, "Startup folder")]
+                        :
+                        [
+                            Evidence.Of("File", file, "Startup folder"),
+                            Evidence.Of("Shortcut target", target, "Startup folder"),
+                        ],
                 });
             }
         }
@@ -316,7 +568,7 @@ public sealed class PersistenceCollector : IPersistenceCollector
                 Scope = PersistenceScope.Machine,
                 Name = name,
                 Command = driver,
-                ImagePath = driver,
+                ImagePath = ResolveImagePath(driver),
                 Location = $@"HKLM\{PrintMonitorsKey}\{name}",
                 EvidenceChain = [Evidence.Of("Driver", driver, $@"HKLM\{PrintMonitorsKey}\{name}")],
             });
@@ -341,7 +593,7 @@ public sealed class PersistenceCollector : IPersistenceCollector
                 Scope = PersistenceScope.Machine,
                 Name = name,
                 Command = dll,
-                ImagePath = dll,
+                ImagePath = ResolveImagePath(dll),
                 Location = $@"HKLM\{NetshKey}",
                 EvidenceChain = [Evidence.Of(name, dll ?? string.Empty, $@"HKLM\{NetshKey}")],
             });
@@ -571,7 +823,7 @@ public sealed class PersistenceCollector : IPersistenceCollector
         if (command.StartsWith('"'))
         {
             var end = command.IndexOf('"', 1);
-            return end > 1 ? command[1..end] : null;
+            return end > 1 ? ResolveImagePath(command[1..end]) : null;
         }
 
         // Unquoted: take up to the first space that ends something .exe/.dll-shaped,
@@ -579,10 +831,148 @@ public sealed class PersistenceCollector : IPersistenceCollector
         var exeIndex = command.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
         if (exeIndex > 0)
         {
-            return command[..(exeIndex + 4)];
+            return ResolveImagePath(command[..(exeIndex + 4)]);
         }
 
         var space = command.IndexOf(' ');
-        return space > 0 ? command[..space] : command;
+        return ResolveImagePath(space > 0 ? command[..space] : command);
+    }
+
+    /// <summary>
+    /// Directories Windows itself loads an unqualified auto-start image from. Ordered
+    /// the way Windows searches, so a name that exists in more than one resolves to the
+    /// same file the operating system would run.
+    /// </summary>
+    private static readonly string[] SearchDirectories =
+    [
+        Environment.GetFolderPath(Environment.SpecialFolder.System),
+        Environment.GetFolderPath(Environment.SpecialFolder.SystemX86),
+        Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+    ];
+
+    /// <summary>
+    /// Turns a configured image path into one a file API can actually open.
+    /// <para>
+    /// Auto-start entries store paths in whatever shape the thing that wrote them felt
+    /// like: <c>%windir%\system32\defrag.exe</c> from Task Scheduler, a bare
+    /// <c>tcpmon.dll</c> from a print monitor, <c>explorer.exe</c> from Winlogon. Handed
+    /// to <see cref="File.Exists(string)"/> unchanged, every one of them reports missing
+    /// — which is how 87 of this machine's 296 path-bearing entries were unverifiable
+    /// while looking, from the outside, exactly like entries that had been checked.
+    /// </para>
+    /// <para>
+    /// Only a probe that <em>finds</em> the file changes the answer. When nothing
+    /// resolves, the configured value is returned as it stands rather than a guess: an
+    /// entry pointing at something that is not there is a fact worth keeping, and it is
+    /// not the same fact as an entry pointing at something unsigned.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// Follows a Startup-folder shortcut to the program it actually launches.
+    /// <para>
+    /// A <c>.lnk</c> carries no Authenticode signature of its own, so verifying the
+    /// shortcut instead of its target reports every Startup-folder item on every machine
+    /// as unsigned. Two of the seven unsigned entries measured here were shortcuts, and
+    /// one of them pointed at RustDesk — a catalogued remote-access tool the signer check
+    /// could have confirmed outright if it had been looking at the right file.
+    /// </para>
+    /// <para>
+    /// Resolved through the shell rather than by parsing the shortcut format directly:
+    /// the format is versioned and only partly documented, and a parser that quietly gets
+    /// it wrong aims the signature check at some other file, which is worse than not
+    /// following the shortcut at all. Anything unexpected leaves the shortcut path in
+    /// place and the signature <see cref="SignatureStatus.Unknown"/>.
+    /// </para>
+    /// </summary>
+    private static string? ResolveShortcut(string linkPath)
+    {
+        if (!linkPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        object? shell = null;
+        object? shortcut = null;
+
+        try
+        {
+            var type = Type.GetTypeFromProgID("WScript.Shell");
+            if (type is null)
+            {
+                return null;
+            }
+
+            shell = Activator.CreateInstance(type);
+            if (shell is null)
+            {
+                return null;
+            }
+
+            shortcut = type.InvokeMember(
+                "CreateShortcut", BindingFlags.InvokeMethod, null, shell, [linkPath],
+                CultureInfo.InvariantCulture);
+
+            if (shortcut is null)
+            {
+                return null;
+            }
+
+            var target = shortcut.GetType().InvokeMember(
+                "TargetPath", BindingFlags.GetProperty, null, shortcut, null,
+                CultureInfo.InvariantCulture) as string;
+
+            return string.IsNullOrWhiteSpace(target) || !File.Exists(target) ? null : target;
+        }
+        catch (Exception ex) when (
+            ex is COMException or TargetInvocationException or MissingMemberException
+                or InvalidCastException or UnauthorizedAccessException)
+        {
+            // A shortcut that will not resolve is reported as the shortcut it is. Guessing
+            // a target would put a signature verdict against a file nobody confirmed.
+            return null;
+        }
+        finally
+        {
+            if (shortcut is not null)
+            {
+                Marshal.ReleaseComObject(shortcut);
+            }
+
+            if (shell is not null)
+            {
+                Marshal.ReleaseComObject(shell);
+            }
+        }
+    }
+
+    internal static string? ResolveImagePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var candidate = path.Trim().Trim('"');
+
+        if (candidate.Contains('%', StringComparison.Ordinal))
+        {
+            candidate = Environment.ExpandEnvironmentVariables(candidate);
+        }
+
+        if (Path.IsPathRooted(candidate))
+        {
+            return candidate;
+        }
+
+        foreach (var directory in SearchDirectories)
+        {
+            var probe = Path.Combine(directory, candidate);
+            if (File.Exists(probe))
+            {
+                return probe;
+            }
+        }
+
+        return candidate;
     }
 }

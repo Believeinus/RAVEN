@@ -142,7 +142,7 @@ public sealed class RemoteAccessToolDetector : IDetector
         else if (signerUnrecognised)
         {
             evidence.Add(Evidence.Of("Expected signer", string.Join(" or ", tool.Signers),
-                "RatScan catalogue"));
+                "RAVEN catalogue"));
         }
 
         return new Finding
@@ -290,7 +290,7 @@ public sealed class RemoteAccessToolDetector : IDetector
         // Stated as a caveat on our own data rather than as an accusation.
         var signerNote = signerUnrecognised
             ? $" Note: this copy is signed by '{process.Signature?.SignerName}', which is not the "
-              + "publisher RatScan has on file for it. That may simply mean the catalogue is out of "
+              + "publisher RAVEN has on file for it. That may simply mean the catalogue is out of "
               + "date, or that a different product shares this executable name — it is not by itself "
               + "evidence of anything wrong."
             : string.Empty;

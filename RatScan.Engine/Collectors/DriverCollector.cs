@@ -82,6 +82,8 @@ public sealed class DriverCollector : IDriverCollector
 
         CollectRegistered(byName, blindspots, cancellationToken);
 
+        var objects = CollectDriverObjects(blindspots, cancellationToken);
+
         if (verifySignatures)
         {
             VerifySignatures(byName, cancellationToken);
@@ -92,7 +94,49 @@ public sealed class DriverCollector : IDriverCollector
             Drivers = byName.Values.OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToList(),
             Blindspots = blindspots,
             AddressesWithheld = loaded.AddressesWithheld,
+            DriverObjects = objects.Succeeded ? objects.Objects : [],
+            DriverObjectsRead = objects.Succeeded,
         };
+    }
+
+    /// <summary>
+    /// Reads <c>\Driver</c> as a third view of what is in the kernel.
+    /// <para>
+    /// Independent of both other sources in the way invariant 4 requires: unlinking a
+    /// driver from <c>PsLoadedModuleList</c> hides it from the loaded-module view and
+    /// deleting its service key hides it from the registry view, but a driver still needs
+    /// an object in <c>\Driver</c> to be sent an IRP.
+    /// </para>
+    /// <para>
+    /// Collected and disclosed, not yet judged. The obvious rule — a driver object with no
+    /// module and no registration — needs a measured baseline before it can be trusted,
+    /// because object names are not file names (<c>\Driver\nvlddmkm</c> against
+    /// <c>nvlddmkm.sys</c>) and the rate at which legitimate drivers fail to match is
+    /// exactly what has to be counted first. That measurement needs an elevated run, which
+    /// has not happened yet, and guessing the threshold is how this detector would ship a
+    /// flood of findings against a healthy machine.
+    /// </para>
+    /// </summary>
+    private static DriverObjectResult CollectDriverObjects(
+        List<Blindspot> blindspots, CancellationToken cancellationToken)
+    {
+        var objects = DriverObjectDirectory.ReadAll(cancellationToken: cancellationToken);
+
+        if (objects.Succeeded)
+        {
+            return objects;
+        }
+
+        blindspots.Add(new Blindspot
+        {
+            Area = @"Driver object directory (\Driver)",
+            Reason = $"{objects.Error}. The third, independent view of the kernel's drivers is "
+                     + "unavailable, so a driver hidden from both the loaded-module list and the "
+                     + "registry cannot be cross-checked against the object manager.",
+            Remedy = objects.AccessDenied ? "Run as Administrator" : null,
+        });
+
+        return objects;
     }
 
     private static void CollectRegistered(

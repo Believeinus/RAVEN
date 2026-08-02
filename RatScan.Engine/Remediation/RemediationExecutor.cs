@@ -29,7 +29,7 @@ public sealed class RemediationExecutor : IRemediationExecutor
         if (!confirmed)
         {
             return RemediationOutcome.Failed(
-                "Not confirmed. RatScan does not change anything on this machine without an "
+                "Not confirmed. RAVEN does not change anything on this machine without an "
                 + "explicit go-ahead.");
         }
 
@@ -49,7 +49,7 @@ public sealed class RemediationExecutor : IRemediationExecutor
         {
             return RemediationOutcome.Failed(
                 "Access denied. This action needs Administrator rights.",
-                "Restart RatScan as Administrator and try again.");
+                "Restart RAVEN as Administrator and try again.");
         }
         catch (Exception ex)
         {

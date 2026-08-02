@@ -112,23 +112,61 @@ All notable changes to RatScan are recorded here. Format follows
 - **Export** to HTML and JSON, with the UI stating what the file contains — program
   paths, ports, hashes, allowlist notes — before it is written rather than after. The
   report carries its own coverage and limits, and machine-controlled text is escaped.
+- **Live Watch panel**, wiring `LiveWatcher` into the application for the first time:
+  start/stop, a status line, alerts, and a feed of process starts and TCP
+  connect/accept. The feed redraws on a one-second timer rather than per event, because
+  image loads arrive in the thousands per second; it states how many events it is not
+  showing. If the ETW session dies underneath it, the panel says the watch stopped and
+  that nothing has been observed since.
+- **"Restart as Administrator"** in the window header, shown only when unelevated.
+  Offered rather than forced: the manifest stays `asInvoker` so the reduced-coverage
+  path remains reachable and testable. Declining the UAC prompt is reported as a
+  decision, not an error.
+- **`PersistenceDetector`** — the auto-start entries were being collected and never
+  judged, so a RAT with a Run-key entry produced no finding at all. Four rules, each
+  designed against a measured baseline of a healthy machine: a catalogued remote-access
+  product configured to start on its own; Winlogon's shell or userinit pointing anywhere
+  other than Windows' own; anything occupying AppInit_DLLs, AppCertDlls or an IFEO
+  debugger; and persistence that carries its code with no file on disk. On the
+  development machine this produces 4 findings from 305 entries, all true.
+- Three auto-start surfaces that had been declared without collectors for several
+  phases now have them: **auto-start services** (kernel drivers excluded, since the
+  driver census already reports those), **Active Setup** components that carry a
+  `StubPath`, and **PowerShell profile scripts** that exist on disk. Swept entries on
+  the development machine went 165 → 305.
+
+### Removed
+
+- `WPF-UI`, `CommunityToolkit.Mvvm`, `Hardcodet.NotifyIcon.Wpf` and
+  `Microsoft.Extensions.Hosting`. Added in phase 0 for a Fluent/MVVM/tray/host build
+  that was never written, and unreferenced by any code since. The solution builds clean
+  without them.
 
 ### Known gaps
 
-- The ETW live watch is **engine-only**: not wired into the UI, no tray icon, and its
-  elevated path is unverified (tests exercise only the unelevated failure branch).
-- Four referenced-but-unused packages: `WPF-UI`, `CommunityToolkit.Mvvm`,
-  `Hardcodet.NotifyIcon.Wpf`, `Microsoft.Extensions.Hosting`. (`Microsoft.Data.Sqlite`
-  came off this list — it now backs the allowlist and history.)
-- Three `PersistenceSurface` members are declared without a collector: `Service`,
-  `ActiveSetup`, `PowerShellProfile`.
+- **The ETW live watch has never run.** It is wired into the UI and its failure path is
+  verified, but every test and every run so far has been unelevated, so session
+  establishment and event flow are still exercised only through their failure branch.
+- No tray icon and no background alerting: the Live Watch panel only reports while the
+  window is open.
+- The network cross-view still has one source. ETW was to supply the second.
 - The JSON export path has not been driven through the UI; only HTML has. The format is
   chosen from the file extension, and `ExportTests` covers both.
-- `RatScan.UI.csproj` still carries a comment claiming the app "runs elevated by
-  manifest". The manifest is `asInvoker`.
+- The published build is **not a true single file** — 6 native DLLs and an `amd64\`
+  folder (TraceEvent's `KernelTraceControl.dll`) must ship beside the 173 MB exe. It is
+  also unsigned, so SmartScreen will warn on first run.
+- Persistence entries carry no signature information, so no rule can yet ask whether an
+  auto-start binary is signed.
 
 ### Fixed
 
+- **Finding titles rendered black on a black card and were effectively unreadable** —
+  "RustDesk is running", the scan-integrity signal names and the blind-spot headings.
+  The implicit `TextBlock` style lived in `MainWindow.Resources`, and a window-scoped
+  implicit style does not reach TextBlocks created from a `DataTemplate`, so every
+  templated item fell back to WPF's default black while the explicitly coloured
+  paragraph directly beneath it looked correct. The palette and default text style moved
+  to `App.xaml`, where application scope reaches template content.
 - **`InvariantGlobalization` crashed the app on any non-invariant keyboard layout.** WPF
   builds a caret the moment a `TextBox` takes focus, which asks Windows for the current
   input language; on English (India) that is culture `0x4009`, which invariant mode
@@ -170,6 +208,18 @@ All notable changes to RatScan are recorded here. Format follows
 
 ### Changed
 
+- **RatScan now asks for Administrator when it launches**, rather than starting
+  unelevated and offering to restart. It relaunches itself elevated at startup, so full
+  coverage is the default. The manifest stays `asInvoker` deliberately: elevation is
+  requested where it can be *declined*, and declining leaves RatScan running with
+  reduced coverage rather than refusing to start. `--no-elevate` skips the request
+  entirely, which is what keeps the reduced-coverage path exercisable by hand and by
+  automation.
+- **Scrolling follows the gesture.** WPF turns every wheel event into the same fixed
+  jump, so a precision touchpad — which reports a stream of small deltas across one
+  swipe — got a full jump per delta and the content outran the finger. All scroll
+  regions now move in proportion to the wheel delta, tuned by a single constant
+  (`App.PixelsPerNotch`).
 - `RawProcess.VerifiedAlive` is tri-state (`true` / `null` / absent) so "could not
   verify" can never be mistaken for "is running" — the distinction between a real
   concealment signal and a phantom finding.

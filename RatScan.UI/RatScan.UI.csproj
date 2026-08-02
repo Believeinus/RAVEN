@@ -1,24 +1,39 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    WPF shell. MVVM via CommunityToolkit.Mvvm, Fluent theming via Wpf.Ui,
-    composition via Microsoft.Extensions.Hosting.
+    WPF shell: a plain Window with code-behind and a hand-rolled dark theme.
 
-    Runs elevated by manifest: without Administrator the tool cannot open every
-    process, enumerate kernel drivers, or start an ETW session — and a scan that
-    silently lacks those is exactly the false reassurance this project exists to
-    avoid. Running unelevated is still permitted, but the Scan Integrity panel
-    reports the degraded coverage.
+    Runs as asInvoker by manifest, deliberately. Without Administrator the tool
+    cannot open every process, enumerate kernel drivers, or start an ETW session —
+    and the whole point is that it must be able to show a user what it cannot see.
+    Forcing elevation would make that degraded path unreachable and untestable.
+    The window reports the reduced coverage and offers "Restart as Administrator".
   -->
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>
     <RootNamespace>RatScan.UI</RootNamespace>
-    <AssemblyName>RatScan</AssemblyName>
+    <AssemblyName>RAVEN</AssemblyName>
+    <Product>RAVEN</Product>
+    <AssemblyTitle>RAVEN — Remote Access &amp; Visibility Examination Node</AssemblyTitle>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- <ApplicationIcon>Assets\ratscan.ico</ApplicationIcon> restored in the polish phase -->
+    <ApplicationIcon>..\Assets\raven.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!--
+    Artwork lives in the repo-root Assets folder and is linked in rather than copied, so
+    there is one master. RAVEN-LOGO.png is deliberately NOT included: it is 2048x2048 and
+    7.7 MB, and both files below are generated from it, cropped to the wings and body so
+    the bird survives being drawn at 16 px.
+
+    WPF takes the window and taskbar icon from ApplicationIcon on its own, so Window.Icon
+    is left unset - that way the title bar gets whichever frame of the .ico fits the
+    current DPI instead of one bitmap stretched to every size.
+  -->
+  <ItemGroup>
+    <Resource Include="..\Assets\raven-tile.png" Link="Assets\raven-tile.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\RatScan.Engine\RatScan.Engine.csproj" />
@@ -27,12 +42,20 @@
     <ProjectReference Include="..\RatScan.Rules\RatScan.Rules.csproj" />
   </ItemGroup>
 
+  <!--
+    One package reference, and it earns its place: the tray icon is the only way the live
+    watch can outlive its window, and a watcher that dies when you close the window cannot
+    catch a thirty-second beacon.
+
+    Wpf.Ui, CommunityToolkit.Mvvm and Microsoft.Extensions.Hosting remain removed. They
+    were added in phase 0 for a Fluent/MVVM/host build that was never written - the shell
+    is a plain Window with code-behind and a hand-rolled theme. Microsoft.Data.Sqlite
+    belongs to the engine and arrives transitively. A dependency list that claims an
+    architecture the code does not have is its own small dishonesty, and it is the kind
+    this project exists to refuse. Re-add one when something actually uses it.
+  -->
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
-    <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
 </Project>

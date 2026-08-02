@@ -62,6 +62,7 @@ public sealed class ScanOrchestrator : IScanOrchestrator
             new ConcealmentDetector(),
             new RemoteAccessToolDetector(),
             new SurveillanceDetector(),
+            new PersistenceDetector(),
         ];
     }
 
@@ -93,7 +94,7 @@ public sealed class ScanOrchestrator : IScanOrchestrator
         }
 
         var persistence = Attempt(
-            "Auto-start persistence", () => _persistence.Collect(cancellationToken),
+            "Auto-start persistence", () => _persistence.Collect(options.VerifySignatures, cancellationToken),
             examined, blindspots);
 
         if (persistence is not null)

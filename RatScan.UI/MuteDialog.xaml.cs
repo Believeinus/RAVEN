@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using RatScan.Engine.Allowlist;
 using RatScan.Engine.Model;
 
@@ -26,7 +26,7 @@ public partial class MuteDialog : Window
         TitleText.Text = finding.Title;
 
         PinText.Text = pinnable
-            ? "This finding will stop appearing for this exact file, as it is right now. RatScan "
+            ? "This finding will stop appearing for this exact file, as it is right now. RAVEN "
               + $"records a fingerprint of {finding.IdentityKey}. If that file is ever replaced or "
               + "modified, the fingerprint stops matching and the finding comes back — so muting "
               + "cannot become a place for something to hide.\n\n"

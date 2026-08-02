@@ -173,7 +173,7 @@ public sealed class ScoringEngine : IScoringEngine
         // especially the quiet one, because that is where a false sense of safety does
         // the most damage.
         text.Append(' ');
-        text.Append("This is a statement about what was examined, not a guarantee. RatScan runs in "
+        text.Append("This is a statement about what was examined, not a guarantee. RAVEN runs in "
                     + "user mode: code running in the kernel, in a hypervisor beneath Windows, or in "
                     + "hardware attached to this machine can return clean answers to every check "
                     + "performed here.");

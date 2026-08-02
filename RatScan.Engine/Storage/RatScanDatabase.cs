@@ -15,6 +15,11 @@ public static class RatScanPaths
     public static string DataDirectory =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            // Deliberately still "RatScan" after the rename to RAVEN. This folder holds
+            // the user's scan history, allowlist and baselines; renaming it would leave
+            // all of that behind on disk while the app came up looking like a fresh
+            // install, which is data loss dressed up as a rebrand. Changing it needs a
+            // migration, not a new string.
             "RatScan");
 
     public static string Database => Path.Combine(DataDirectory, "ratscan.db");

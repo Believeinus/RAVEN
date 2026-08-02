@@ -69,7 +69,7 @@ public static class ScanExporter
         var document = new
         {
             schema = JsonSchemaVersion,
-            tool = "RatScan",
+            tool = "RAVEN",
             machine,
             scan = new
             {
@@ -141,7 +141,7 @@ public static class ScanExporter
     // ---- HTML -------------------------------------------------------------------
 
     private const string UserModeLimitation =
-        "RatScan runs in user mode. Code running in the Windows kernel, in a hypervisor "
+        "RAVEN runs in user mode. Code running in the Windows kernel, in a hypervisor "
         + "beneath Windows, or in hardware attached to this machine can return clean answers "
         + "to every check in this report. This document states what was examined. It is not "
         + "a certificate that the machine is clean, and no user-mode tool can issue one.";
@@ -157,7 +157,7 @@ public static class ScanExporter
             <!doctype html>
             <html lang="en"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>RatScan report</title>
+            <title>RAVEN report</title>
             <style>
               :root { color-scheme: light; }
               body { font: 15px/1.55 "Segoe UI", system-ui, sans-serif; color: #1b1f26;
@@ -194,7 +194,8 @@ public static class ScanExporter
 
         var local = result.StartedUtc.ToLocalTime();
 
-        html.Append("<h1>RatScan report</h1><p class=\"muted-text\">");
+        html.Append("<h1>RAVEN report</h1><p class=\"muted-text\">"
+            + "<span class=\"muted-text\">Remote Access &amp; Visibility Examination Node</span><br />");
         html.Append(Text($"{local:dddd d MMMM yyyy, HH:mm}"));
 
         if (!string.IsNullOrWhiteSpace(machine))

@@ -82,7 +82,7 @@ public sealed class LiveWatcher : IDisposable
             {
                 Started = false,
                 Error = "Live monitoring needs Administrator rights — ETW kernel sessions are privileged.",
-                Remedy = "Restart RatScan as Administrator.",
+                Remedy = "Restart RAVEN as Administrator.",
             };
         }
 
@@ -118,7 +118,7 @@ public sealed class LiveWatcher : IDisposable
             })
             {
                 IsBackground = true,
-                Name = "RatScan ETW pump",
+                Name = "RAVEN ETW pump",
             };
 
             _pump.Start();

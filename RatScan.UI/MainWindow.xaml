@@ -1,23 +1,18 @@
-<Window x:Class="RatScan.UI.MainWindow"
+﻿<Window x:Class="RatScan.UI.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="RatScan" Height="820" Width="1180"
+        xmlns:tb="http://www.hardcodet.net/taskbar"
+        Title="RAVEN" Height="820" Width="1180"
         MinHeight="480" MinWidth="720"
         WindowStartupLocation="Manual"
         Background="#0F1115">
 
     <Window.Resources>
-        <SolidColorBrush x:Key="Ink" Color="#E6E8EC" />
-        <SolidColorBrush x:Key="Muted" Color="#8B93A1" />
-        <SolidColorBrush x:Key="Panel" Color="#161A21" />
-        <SolidColorBrush x:Key="Line" Color="#242A34" />
-        <SolidColorBrush x:Key="Accent" Color="#4C8DFF" />
-
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource Ink}" />
-            <Setter Property="FontFamily" Value="Segoe UI" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
+        <!--
+            Palette and the default TextBlock style are in App.xaml deliberately — at
+            window scope they never reach TextBlocks inside a DataTemplate. See the
+            comment there before moving them back.
+        -->
 
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Panel}" />
@@ -121,15 +116,79 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!--
+            Tray presence, and the only reason this window may outlive its own Close.
+
+            Deliberately absent: any form of start-with-Windows. RAVEN reports other
+            software that configures itself to start automatically; giving itself a Run key
+            would make the tool an instance of the thing it flags.
+        -->
+        <tb:TaskbarIcon x:Name="Tray"
+                        Visibility="Collapsed"
+                        ToolTipText="RAVEN — not watching"
+                        TrayLeftMouseUp="OnTrayShowClick">
+            <!--
+                The logo identifies it; the dot in the corner says whether it is doing
+                anything. Both are needed - a tray icon that looks identical whether the
+                watch is running or dead is worse than no tray icon, and the logo alone
+                cannot carry that. The dot keeps a dark ring so it stays visible against
+                both the artwork and a light taskbar.
+            -->
+            <tb:TaskbarIcon.IconFrameworkElementSource>
+                <Grid Width="32" Height="32" Background="Transparent">
+                    <Image Source="Assets/raven-tile.png" Stretch="UniformToFill"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Ellipse x:Name="TrayDot" Width="13" Height="13"
+                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                             Fill="#8B93A1" Stroke="#0F1115" StrokeThickness="2" />
+                </Grid>
+            </tb:TaskbarIcon.IconFrameworkElementSource>
+
+            <tb:TaskbarIcon.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Show RAVEN" Click="OnTrayShowClick" />
+                    <MenuItem x:Name="TrayStopItem" Header="Stop watching" Click="OnTrayStopWatchingClick" />
+                    <Separator />
+                    <MenuItem Header="Quit RAVEN" Click="OnTrayQuitClick" />
+                </ContextMenu>
+            </tb:TaskbarIcon.ContextMenu>
+        </tb:TaskbarIcon>
+
         <Grid Grid.Row="0" Margin="0,0,0,20">
-            <StackPanel>
-                <TextBlock Text="RatScan" FontSize="26" FontWeight="Bold" />
-                <TextBlock Foreground="{StaticResource Muted}" FontSize="13"
-                           Text="Find and shut down remote access and surveillance on Windows" />
+            <!--
+                The title bar carries only "RAVEN"; the name it stands for belongs here,
+                where there is room to read it. The logo keeps its own dark backdrop
+                inside a rounded tile rather than being cut out - the artwork sits on a
+                gradient, and a bad key would leave a halo around every feather.
+            -->
+            <StackPanel Orientation="Horizontal">
+                <Border Width="52" Height="52" CornerRadius="10" Margin="0,0,14,0"
+                        VerticalAlignment="Top" ClipToBounds="True"
+                        BorderBrush="{StaticResource Line}" BorderThickness="1">
+                    <Image Source="Assets/raven-tile.png" Stretch="UniformToFill"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+                </Border>
+
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="RAVEN" FontSize="26" FontWeight="Bold" />
+                    <TextBlock Foreground="{StaticResource Muted}" FontSize="13"
+                               Text="Remote Access &amp; Visibility Examination Node" />
+                    <TextBlock Foreground="{StaticResource Muted}" FontSize="12" Margin="0,2,0,0"
+                               Text="Find and shut down remote access and surveillance on Windows" />
+                </StackPanel>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <TextBlock x:Name="ElevationText" VerticalAlignment="Center" Margin="0,0,16,0"
                            FontSize="12" Foreground="{StaticResource Muted}" />
+                <!--
+                    Offered rather than forced. The manifest is asInvoker on purpose: the
+                    reduced-coverage path is a real product behaviour and has to stay
+                    observable, so the app names what it cannot see and lets the user
+                    decide to hand it more.
+                -->
+                <Button x:Name="ElevateButton" Content="Restart as Administrator"
+                        Click="OnElevateClick" Background="#2A3242" Margin="0,0,10,0"
+                        Visibility="Collapsed" />
                 <Button x:Name="ExportButton" Content="Export report" Click="OnExportClick"
                         Background="#2A3242" IsEnabled="False" Margin="0,0,10,0" />
                 <Button x:Name="ScanButton" Content="Run full scan" Click="OnScanClick" />
@@ -150,7 +209,7 @@
                                    Text="No scan has been run yet." />
                         <TextBlock x:Name="SummaryText" Margin="0,10,0,0" FontSize="13" LineHeight="20"
                                    Foreground="{StaticResource Muted}"
-                                   Text="Press Run full scan. RatScan examines running processes, network listeners, Windows' own remote-access features, auto-start entries and kernel drivers." />
+                                   Text="Press Run full scan. RAVEN examines running processes, network listeners, Windows' own remote-access features, auto-start entries and kernel drivers." />
                     </StackPanel>
                 </Grid>
                 <!--
@@ -165,19 +224,33 @@
                     <StackPanel>
                         <TextBlock x:Name="ChangeHeader" FontSize="12" FontWeight="SemiBold"
                                    TextWrapping="Wrap" Foreground="#B7C4DA" />
-                        <ItemsControl x:Name="ChangeList" Margin="0,8,0,0">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Margin="0,2">
-                                        <TextBlock Text="{Binding Marker}" FontFamily="Consolas"
-                                                   FontSize="12" Margin="0,0,8,0"
-                                                   Foreground="{Binding MarkerBrush}" />
-                                        <TextBlock Text="{Binding Text}" FontSize="12"
-                                                   TextWrapping="Wrap" Foreground="#8B93A1" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!--
+                            Capped and scrollable, because this list has no natural size
+                            limit. A scan whose coverage differs from the previous one can
+                            produce a diff entry per kernel driver - a hundred rows - and
+                            as a bare ItemsControl in an Auto-height row that pushed every
+                            card below it off the bottom of the window, with no outer
+                            scrollbar to get them back. MaxHeight here is a floor for the
+                            first layout pass; the real cap is set against window height in
+                            UpdateChangeListCap.
+                        -->
+                        <ScrollViewer x:Name="ChangeScroll" Margin="0,8,0,0" MaxHeight="200"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl x:Name="ChangeList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <TextBlock Text="{Binding Marker}" FontFamily="Consolas"
+                                                       FontSize="12" Margin="0,0,8,0"
+                                                       Foreground="{Binding MarkerBrush}" />
+                                            <TextBlock Text="{Binding Text}" FontSize="12"
+                                                       TextWrapping="Wrap" Foreground="#8B93A1" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
                         <TextBlock x:Name="ChangeCaveat" FontSize="11.5" LineHeight="17"
                                    TextWrapping="Wrap" Margin="0,8,0,0" Foreground="#E8C939"
                                    Visibility="Collapsed" />
@@ -320,14 +393,36 @@
                 </DockPanel>
             </Border>
 
-            <Grid Grid.Column="2">
+            <!--
+                The column scrolls; the cards inside it do not fight over its height.
+
+                These three want roughly 580 px between them - integrity signals, a blind
+                spot list, and a live watch stacking a status, a counts line, alerts and an
+                event feed. What they get is whatever is left under the verdict card, which
+                measured about 400. Splitting a shortage by weight only chooses which card
+                is unusable: giving live watch enough room left the integrity panel showing
+                its title and one line.
+
+                So the shortage is taken out of the column instead. Each card is bounded so
+                one long list cannot make the column enormous, and anything that does not
+                fit is reachable by scrolling rather than silently cut off - which is the
+                same reason nothing else in this window truncates without saying so.
+
+                Live watch is placed first, out of markup order, because it holds the only
+                control in this column. An integrity panel you have to scroll to read costs
+                a scroll; a Start watching button you have to scroll to find is a feature
+                the user never discovers.
+            -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="18" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Style="{StaticResource Card}">
+                <Border Grid.Row="1" MaxHeight="170" Margin="0,0,0,18" Style="{StaticResource Card}">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}"
                                    Text="SCAN INTEGRITY" />
@@ -352,7 +447,7 @@
                     </DockPanel>
                 </Border>
 
-                <Border Grid.Row="2" Style="{StaticResource Card}">
+                <Border Grid.Row="2" MaxHeight="190" Style="{StaticResource Card}">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}"
                                    x:Name="BlindspotHeader" Text="WHAT THIS SCAN COULD NOT SEE" />
@@ -375,7 +470,82 @@
                         </ScrollViewer>
                     </DockPanel>
                 </Border>
-            </Grid>
+
+                <!--
+                    Live watch. A scan describes an instant; this is the only part of
+                    RAVEN that can see a program which starts, beacons and exits
+                    between two scans. It is off until asked for, and it says plainly
+                    when it is not running - a watcher that is silently not watching is
+                    the most dangerous state this component can be in.
+                -->
+                <Border Grid.Row="0" MinHeight="240" MaxHeight="440" Margin="0,0,0,18"
+                        Style="{StaticResource Card}">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Top">
+                            <TextBlock Style="{StaticResource SectionTitle}"
+                                       x:Name="WatchHeader" Text="LIVE WATCH — OFF" />
+                            <Button x:Name="WatchButton" Content="Start watching"
+                                    Click="OnWatchClick" HorizontalAlignment="Right"
+                                    VerticalAlignment="Top" Background="#2A3242"
+                                    Padding="12,5" FontSize="11.5" Margin="0,-6,0,0" />
+                        </Grid>
+
+                        <TextBlock DockPanel.Dock="Top" x:Name="WatchStatus" FontSize="11.5"
+                                   LineHeight="17" TextWrapping="Wrap" Margin="0,0,0,10"
+                                   Foreground="#8B93A1"
+                                   Text="Not running. A scan samples the machine at one moment — anything that starts, connects and exits between scans is invisible to it. Watching needs Administrator." />
+
+                        <TextBlock DockPanel.Dock="Bottom" x:Name="WatchCounts" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,8,0,0" Foreground="#6B7484"
+                                   Visibility="Collapsed" />
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <ItemsControl x:Name="AlertList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#1C1620" BorderBrush="{Binding AccentBrush}"
+                                                    BorderThickness="2,0,0,0" Padding="10,7"
+                                                    Margin="0,0,0,8" CornerRadius="3">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                                               FontWeight="SemiBold" TextWrapping="Wrap"
+                                                               Foreground="{Binding AccentBrush}" />
+                                                    <TextBlock Text="{Binding Explanation}" FontSize="11"
+                                                               LineHeight="16" TextWrapping="Wrap"
+                                                               Margin="0,3,0,0" Foreground="#B7C4DA" />
+                                                    <TextBlock Text="{Binding When}" FontSize="10"
+                                                               Margin="0,3,0,0" Foreground="#6B7484" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <ItemsControl x:Name="FeedList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                                <TextBlock Text="{Binding When}" FontFamily="Consolas"
+                                                           FontSize="10.5" Foreground="#6B7484"
+                                                           Margin="0,0,7,0" />
+                                                <TextBlock Text="{Binding Marker}" FontFamily="Consolas"
+                                                           FontSize="10.5" Margin="0,0,7,0"
+                                                           Foreground="{Binding MarkerBrush}" />
+                                                <TextBlock Text="{Binding Text}" FontSize="11"
+                                                           TextWrapping="Wrap" Foreground="#8B93A1" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+              </Grid>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </Window>

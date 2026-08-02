@@ -1,3 +1,4 @@
+using RatScan.Native.Drivers;
 using RatScan.Native.Signing;
 
 namespace RatScan.Engine.Model;
@@ -13,7 +14,7 @@ namespace RatScan.Engine.Model;
 /// </summary>
 public enum PersistenceSurface
 {
-    // --- collected by PersistenceCollector (14) ---
+    // --- collected by PersistenceCollector (17) ---
     RunKey,
     RunOnceKey,
     StartupFolder,
@@ -29,14 +30,12 @@ public enum PersistenceSurface
     PrintMonitor,
     NetshHelper,
 
-    // --- DECLARED BUT NOT YET SWEPT ---
-    // No collector emits these. They are kept because the surfaces are real and
-    // planned, but nothing currently looks at them — so a machine using one of these
-    // for persistence would produce no finding.
-    //
-    // This distinction is not cosmetic on this project. An enum member that implies a
-    // surface is examined when it is not is the same lie as a verdict that implies
-    // coverage it does not have. Until a collector exists, they stay flagged.
+    // These three were declared and unswept for several phases, which meant a machine
+    // persisting through any of them produced no finding while the documentation
+    // promised coverage. They now have collectors, and the grouping is kept only as a
+    // reminder of why the distinction was drawn: an enum member that implies a surface
+    // is examined when it is not is the same lie as a verdict implying coverage it does
+    // not have.
     Service,
     ActiveSetup,
     PowerShellProfile,
@@ -122,4 +121,21 @@ public sealed record DriverCensusResult
 
     /// <summary>True when the OS withheld kernel image bases (running unelevated).</summary>
     public bool AddressesWithheld { get; init; }
+
+    /// <summary>
+    /// Names from the <c>\Driver</c> object directory — a third view of the kernel's
+    /// drivers, independent of both the loaded-module list and the registry.
+    /// </summary>
+    public IReadOnlyList<DriverObject> DriverObjects { get; init; } = [];
+
+    /// <summary>
+    /// Whether <c>\Driver</c> was actually read.
+    /// <para>
+    /// Load-bearing, and the reason this is not inferred from an empty
+    /// <see cref="DriverObjects"/>: unelevated the directory cannot be opened at all, and
+    /// a view that could not be read must never be diffed as a view that came back empty.
+    /// That collapse is what produced the 327-phantom-process bug.
+    /// </para>
+    /// </summary>
+    public bool DriverObjectsRead { get; init; }
 }

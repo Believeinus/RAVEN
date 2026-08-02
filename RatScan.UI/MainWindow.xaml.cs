@@ -1,7 +1,11 @@
+﻿using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Security.Principal;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
+using Hardcodet.Wpf.TaskbarNotification;
 using RatScan.Engine;
 using RatScan.Engine.Allowlist;
 using RatScan.Engine.Collectors;
@@ -9,6 +13,7 @@ using RatScan.Engine.Export;
 using RatScan.Engine.History;
 using RatScan.Engine.Model;
 using RatScan.Engine.Remediation;
+using RatScan.Etw;
 
 namespace RatScan.UI;
 
@@ -36,6 +41,33 @@ public partial class MainWindow : Window, IDisposable
     /// <summary>The comparison shown for that scan, so an export can carry it too.</summary>
     private ScanDiff? _lastDiff;
 
+    /// <summary>Live ETW watch. Constructed here, started only when the user asks.</summary>
+    private readonly LiveWatcher _watcher = new();
+
+    private readonly DispatcherTimer _feedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    private readonly List<WatchAlertRow> _alerts = [];
+
+    private DateTime _watchStartedUtc;
+
+    /// <summary>
+    /// Set only by "Quit RAVEN". Closing the window while a watch is running hides it
+    /// instead, so the close path needs to know which of the two it is serving.
+    /// </summary>
+    private bool _quitting;
+
+    /// <summary>
+    /// The hide-to-tray explanation is shown once per run. Repeating it every time turns
+    /// a disclosure into an irritation, and an irritation is something people click past.
+    /// </summary>
+    private bool _explainedHiding;
+
+    /// <summary>How many process/network events the feed shows at once.</summary>
+    private const int FeedLength = 60;
+
+    /// <summary>Mirrors <c>LiveWatcher</c>'s ring size, for the disclosure line only.</summary>
+    private const int RingCapacityForDisplay = 5000;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -57,9 +89,39 @@ public partial class MainWindow : Window, IDisposable
 
         _orchestrator = new ScanOrchestrator(allowlist: _allowlist);
 
+        _watcher.Alerted += OnAlerted;
+        _feedTimer.Tick += (_, _) => RefreshFeed();
+
+        SizeChanged += (_, _) => UpdateChangeListCap();
+        Loaded += (_, _) => UpdateChangeListCap();
+
         FitToScreen();
         ShowElevationState();
     }
+
+    /// <summary>
+    /// Keeps the "since your last scan" list from pushing the rest of the window off-screen.
+    /// <para>
+    /// The list has no natural size limit. The first scan taken after this machine's
+    /// coverage changes produces one diff entry per kernel driver the previous scan could
+    /// see and this one cannot — around a hundred rows. Uncapped, in an Auto-height row,
+    /// that drove the findings, integrity and blind-spot cards a thousand pixels below the
+    /// bottom of the window, and with no outer scrollbar the only way to get them back was
+    /// to run a second scan.
+    /// </para>
+    /// <para>
+    /// The cap lands on the list, which scrolls, rather than on the card, which would clip
+    /// the verdict itself — the one thing on this window that has to stay readable.
+    /// </para>
+    /// </summary>
+    /// <para>
+    /// The fraction is small on purpose. Every pixel this panel takes comes out of the
+    /// cards below it, and those hold the findings themselves — the change list is a
+    /// summary of what moved, not the evidence, and it scrolls with its total stated in
+    /// the header.
+    /// </para>
+    private void UpdateChangeListCap() =>
+        ChangeScroll.MaxHeight = Math.Max(120, ActualHeight * 0.17);
 
     /// <summary>
     /// Sizes and places the window inside the usable desktop.
@@ -83,14 +145,114 @@ public partial class MainWindow : Window, IDisposable
     /// <summary>Breathing room left around the window when the desktop is tight.</summary>
     private const double DesktopMargin = 32;
 
+    /// <summary>
+    /// Closing the window ends RAVEN — unless a live watch is running, in which case it
+    /// hides to the tray and says so.
+    /// <para>
+    /// The asymmetry is the point. A watcher that dies with its window cannot catch a
+    /// beacon that fires every thirty seconds, which is the whole reason the panel exists.
+    /// But an application that silently outlives its own window, whenever it feels like
+    /// it, is behaving exactly like the software this tool flags — so it only happens
+    /// while there is something to watch, it is announced the first time, and stopping the
+    /// watch from the tray closes the process for good.
+    /// </para>
+    /// </summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_quitting || !_watcher.IsRunning)
+        {
+            base.OnClosing(e);
+            return;
+        }
+
+        e.Cancel = true;
+        Hide();
+        Tray.Visibility = Visibility.Visible;
+
+        if (!_explainedHiding)
+        {
+            _explainedHiding = true;
+
+            Tray.ShowBalloonTip(
+                "RAVEN is still watching",
+                "The window is closed but the live watch is still running. Right-click the "
+                + "tray icon to stop watching or quit.",
+                BalloonIcon.Info);
+        }
+
+        base.OnClosing(e);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         Dispose();
         base.OnClosed(e);
     }
 
+    private void OnTrayShowClick(object sender, RoutedEventArgs e) => RestoreFromTray();
+
+    private void RestoreFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    /// <summary>
+    /// Stops the watch from the tray and brings the window back, rather than stopping it
+    /// invisibly. The state that changed is one the user has to be able to see.
+    /// </summary>
+    private void OnTrayStopWatchingClick(object sender, RoutedEventArgs e)
+    {
+        if (_watcher.IsRunning)
+        {
+            StopWatching("Stopped from the tray. Nothing is being observed between scans.");
+        }
+
+        RestoreFromTray();
+        UpdateTrayState();
+    }
+
+    private void OnTrayQuitClick(object sender, RoutedEventArgs e)
+    {
+        _quitting = true;
+        Close();
+    }
+
+    /// <summary>
+    /// Keeps the tray icon telling the truth about whether anything is being observed.
+    /// A green indicator over a dead watcher would be worse than no indicator at all.
+    /// </summary>
+    private void UpdateTrayState()
+    {
+        var watching = _watcher.IsRunning;
+
+        var colour = watching
+            ? Color.FromRgb(0x6E, 0xD0, 0x8A)
+            : Color.FromRgb(0x8B, 0x93, 0xA1);
+
+        TrayDot.Fill = new SolidColorBrush(colour);
+
+        Tray.ToolTipText = watching
+            ? "RAVEN — watching for remote-access software starting"
+            : "RAVEN — not watching";
+
+        TrayStopItem.IsEnabled = watching;
+
+        // The icon is only shown while it means something: a watch is running, or the
+        // window is hidden and the tray is the only way back to it.
+        Tray.Visibility = watching || !IsVisible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     public void Dispose()
     {
+        // The ETW session outlives the process that created it, so failing to dispose
+        // leaves a running kernel session behind and blocks the next start.
+        _feedTimer.Stop();
+        _watcher.Dispose();
+
         _allowlist?.Dispose();
         _history?.Dispose();
         GC.SuppressFinalize(this);
@@ -107,6 +269,51 @@ public partial class MainWindow : Window, IDisposable
         ElevationText.Foreground = new SolidColorBrush(elevated
             ? Color.FromRgb(0x6E, 0xD0, 0x8A)
             : Color.FromRgb(0xE8, 0xB3, 0x39));
+
+        ElevateButton.Visibility = elevated ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Relaunches elevated, at the user's request rather than by manifest.
+    /// <para>
+    /// Deliberately a button and not a <c>requireAdministrator</c> manifest. Forcing
+    /// elevation would make the degraded-coverage path unreachable, and that path is a
+    /// first-class product behaviour: RAVEN has to be able to show a user what it
+    /// cannot see. Declining the UAC prompt is a normal outcome, not an error.
+    /// </para>
+    /// </summary>
+    private void OnElevateClick(object sender, RoutedEventArgs e)
+    {
+        var exe = Environment.ProcessPath;
+
+        if (exe is null)
+        {
+            MessageBox.Show(
+                this,
+                "RAVEN could not determine its own executable path, so it cannot restart itself.",
+                "Cannot restart", MessageBoxButton.OK, MessageBoxImage.Error);
+
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exe,
+                UseShellExecute = true,
+                Verb = "runas",
+            });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The user dismissed the UAC prompt. Nothing has changed and nothing is
+            // wrong; saying so beats an error dialog for a decision they just made.
+            ElevationText.Text = "Not elevated — restart declined";
+            return;
+        }
+
+        Close();
     }
 
     private static bool IsElevated()
@@ -193,7 +400,7 @@ public partial class MainWindow : Window, IDisposable
 
         RenderAllowlist(result);
 
-        Title = $"RatScan — {result.Verdict} ({result.Duration.TotalSeconds:F1}s)";
+        Title = $"RAVEN — {result.Verdict} ({result.Duration.TotalSeconds:F1}s)";
     }
 
     /// <summary>
@@ -324,10 +531,13 @@ public partial class MainWindow : Window, IDisposable
         var when = previous.StartedUtc.ToLocalTime();
         var header = $"SINCE YOUR LAST SCAN — {when:d MMM yyyy, HH:mm}";
 
+        // The count goes in the header because the list scrolls. Showing six rows out of a
+        // hundred with no total is the same failure as a quiet verdict: what is on screen
+        // reads like all there is.
         ChangeHeader.Text = diff.NothingChanged
             ? $"{header}: nothing changed. That is not the same as nothing being there — "
               + "the findings above are still present."
-            : header;
+            : $"{header} — {rows.Count} change{(rows.Count == 1 ? string.Empty : "s")}";
 
         ChangeList.ItemsSource = rows;
 
@@ -371,10 +581,10 @@ public partial class MainWindow : Window, IDisposable
                            + $"ENTR{(entries.Count == 1 ? "Y" : "IES")} APPLIED";
 
         MutedNote.Text = result.MutingChangedVerdict
-            ? "These are findings you told RatScan not to report. Your allowlist is the reason "
+            ? "These are findings you told RAVEN not to report. Your allowlist is the reason "
               + $"this scan reads as it does: without it the verdict would be "
               + $"{result.VerdictIfNothingMuted}."
-            : "These are findings you told RatScan not to report. They were still detected — they "
+            : "These are findings you told RAVEN not to report. They were still detected — they "
               + "are only withheld from the count and the verdict.";
 
         MutedList.ItemsSource = rows;
@@ -382,7 +592,7 @@ public partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// Every action passes through here, and every action shows the exact command
-    /// before it runs. The dialog is not a formality: RatScan can be wrong, and the
+    /// before it runs. The dialog is not a formality: RAVEN can be wrong, and the
     /// person at the keyboard is the one who knows whether a program is theirs.
     /// </summary>
     private void OnFixClick(object sender, RoutedEventArgs e)
@@ -393,7 +603,7 @@ public partial class MainWindow : Window, IDisposable
         }
 
         var elevationWarning = action.RequiresElevation && !IsElevated()
-            ? "\n\nThis needs Administrator rights and RatScan is not elevated, so it will "
+            ? "\n\nThis needs Administrator rights and RAVEN is not elevated, so it will "
               + "probably fail. Restart as Administrator first."
             : string.Empty;
 
@@ -432,7 +642,7 @@ public partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Muting is the one control here that makes RatScan report less, so it goes
+    /// Muting is the one control here that makes RAVEN report less, so it goes
     /// through the same shape as remediation: state plainly what it will do, require a
     /// reason, and change nothing until the user commits.
     /// </summary>
@@ -491,6 +701,144 @@ public partial class MainWindow : Window, IDisposable
 
         Render(_orchestrator.ReapplyAllowlist(_lastResult));
     }
+
+    // ---- live watch ---------------------------------------------------------------
+
+    /// <summary>
+    /// Starts or stops the ETW watcher.
+    /// <para>
+    /// Off until asked for. It needs Administrator, and a failure to start is shown as a
+    /// named condition with its remedy rather than a silent no-op — the whole value of
+    /// this panel is that the user can tell watching from not-watching at a glance.
+    /// </para>
+    /// </summary>
+    private void OnWatchClick(object sender, RoutedEventArgs e)
+    {
+        if (_watcher.IsRunning)
+        {
+            StopWatching("Stopped. Nothing is being observed between scans.");
+            return;
+        }
+
+        var start = _watcher.Start();
+
+        if (!start.Started)
+        {
+            WatchHeader.Text = "LIVE WATCH — CANNOT START";
+            WatchStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xB3, 0x39));
+            WatchStatus.Text = start.Remedy is null
+                ? start.Error ?? "The watcher could not be started."
+                : $"{start.Error}\n{start.Remedy}";
+
+            return;
+        }
+
+        _watchStartedUtc = DateTime.UtcNow;
+        _alerts.Clear();
+        AlertList.ItemsSource = null;
+
+        WatchHeader.Text = "LIVE WATCH — ON";
+        WatchButton.Content = "Stop watching";
+        WatchStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x6E, 0xD0, 0x8A));
+        // Kept to two lines. This card has to fit a status, a counts line, the alerts and
+        // the event feed into one column; three lines of standing explanation is three
+        // lines the live data does not get, and the user reads this once.
+        WatchStatus.Text = "Watching process starts, image loads and TCP connections. Alerts fire "
+                           + "once per tool for catalogued remote-access software; everything else "
+                           + "is listed below.";
+
+        WatchCounts.Visibility = Visibility.Visible;
+        _feedTimer.Start();
+        UpdateTrayState();
+        RefreshFeed();
+    }
+
+    private void StopWatching(string status)
+    {
+        _feedTimer.Stop();
+        _watcher.Stop();
+
+        WatchHeader.Text = "LIVE WATCH — OFF";
+        WatchButton.Content = "Start watching";
+        WatchStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x8B, 0x93, 0xA1));
+        WatchStatus.Text = status;
+
+        UpdateTrayState();
+    }
+
+    /// <summary>
+    /// Redraws the feed on a timer rather than per event.
+    /// <para>
+    /// Image-load events arrive in the thousands per second on an ordinary desktop.
+    /// Marshalling each one to the UI thread would wedge the window, and a watcher that
+    /// freezes the app is a watcher the user turns off.
+    /// </para>
+    /// </summary>
+    private void RefreshFeed()
+    {
+        // The pump can die underneath us — the session is torn down, or another process
+        // takes the ETW session name. Reporting that is the whole point of the panel.
+        if (!_watcher.IsRunning)
+        {
+            StopWatching("The watcher stopped on its own. The ETW session was closed or taken over — "
+                         + "nothing has been observed since. Start it again to resume.");
+
+            return;
+        }
+
+        var events = _watcher.RecentEvents;
+
+        var shown = events
+            .Where(Interesting)
+            .TakeLast(FeedLength)
+            .Reverse()
+            .Select(FeedRow.From)
+            .ToList();
+
+        FeedList.ItemsSource = shown;
+
+        // The feed hides image loads because they would bury everything else. Hiding
+        // them silently would be the same move this tool refuses to make elsewhere, so
+        // the count says what is not on screen.
+        var hidden = events.Count - events.Count(Interesting);
+        var elapsed = DateTime.UtcNow - _watchStartedUtc;
+
+        WatchCounts.Text =
+            $"{events.Count} events in {elapsed.TotalMinutes:F0} min · showing the last "
+            + $"{shown.Count} process and network events · {hidden} image loads not shown · "
+            + $"buffer holds the most recent {RingCapacityForDisplay}";
+    }
+
+    private static bool Interesting(LiveEvent observed) =>
+        observed.Kind is LiveEventKind.ProcessStarted
+            or LiveEventKind.NetworkConnect
+            or LiveEventKind.NetworkAccept;
+
+    /// <summary>
+    /// Called from the ETW pump thread — every touch of the UI has to be marshalled.
+    /// </summary>
+    private void OnAlerted(LiveAlert alert) =>
+        Dispatcher.BeginInvoke(() =>
+        {
+            var row = WatchAlertRow.From(alert);
+
+            _alerts.Insert(0, row);
+            AlertList.ItemsSource = null;
+            AlertList.ItemsSource = _alerts;
+
+            // The alerts this raises are already rare by design — a catalogued
+            // remote-access tool starting, once per tool per session. An alert nobody is
+            // looking at is the case the tray exists for, so it is pushed rather than
+            // left sitting in a list behind a hidden window. When the window is up and
+            // in front, the list is the notification and a balloon would be noise.
+            if (IsVisible && IsActive)
+            {
+                return;
+            }
+
+            Tray.Visibility = Visibility.Visible;
+            Tray.ShowBalloonTip(row.Title, row.Explanation, BalloonIcon.Warning);
+        });
 
     private static string RiskText(RemediationRisk risk) => risk switch
     {
@@ -586,6 +934,72 @@ public sealed record IntegrityRow
             null => Color.FromRgb(0x8B, 0x93, 0xA1),
         }),
     };
+}
+
+/// <summary>An alert the live watcher decided was worth interrupting for.</summary>
+public sealed record WatchAlertRow
+{
+    public required string Title { get; init; }
+    public required string Explanation { get; init; }
+    public required string When { get; init; }
+    public required Brush AccentBrush { get; init; }
+
+    public static WatchAlertRow From(LiveAlert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+
+        return new WatchAlertRow
+        {
+            Title = alert.Title,
+            Explanation = alert.Explanation,
+            When = alert.TimeUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture),
+
+            // High priority is red; everything else is amber. The distinction matches
+            // the integrity panel: red means something may be acting against you.
+            AccentBrush = new SolidColorBrush(alert.IsHighPriority
+                ? Color.FromRgb(0xFF, 0x6B, 0x6B)
+                : Color.FromRgb(0xE8, 0xB3, 0x39)),
+        };
+    }
+}
+
+/// <summary>One observed event in the live feed.</summary>
+public sealed record FeedRow
+{
+    public required string When { get; init; }
+    public required string Marker { get; init; }
+    public required Brush MarkerBrush { get; init; }
+    public required string Text { get; init; }
+
+    private static readonly Brush Started = new SolidColorBrush(Color.FromRgb(0xE8, 0x8B, 0x39));
+    private static readonly Brush Outbound = new SolidColorBrush(Color.FromRgb(0x6E, 0xA8, 0xD0));
+    private static readonly Brush Inbound = new SolidColorBrush(Color.FromRgb(0xE8, 0xC9, 0x39));
+
+    public static FeedRow From(LiveEvent observed)
+    {
+        ArgumentNullException.ThrowIfNull(observed);
+
+        var name = observed.ProcessName ?? $"pid {observed.Pid}";
+
+        var (marker, brush, text) = observed.Kind switch
+        {
+            LiveEventKind.ProcessStarted => ("+", Started, $"{name} started"),
+            LiveEventKind.NetworkConnect => ("→", Outbound, $"{name} connected to {observed.Subject}"),
+
+            // Inbound is the one that matters most here: something on this machine
+            // accepted a connection from somewhere else.
+            LiveEventKind.NetworkAccept => ("←", Inbound, $"{name} accepted a connection from {observed.Subject}"),
+            _ => ("·", Outbound, $"{name} {observed.Kind}"),
+        };
+
+        return new FeedRow
+        {
+            When = observed.TimeUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture),
+            Marker = marker,
+            MarkerBrush = brush,
+            Text = text,
+        };
+    }
 }
 
 /// <summary>One line in the "since your last scan" panel.</summary>

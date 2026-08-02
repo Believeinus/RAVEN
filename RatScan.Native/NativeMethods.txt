@@ -173,3 +173,21 @@ CheckRemoteDebuggerPresent
 GetNativeSystemInfo
 GetSystemFirmwareTable
 GetFirmwareEnvironmentVariableW
+
+// ---------------------------------------------------------------------------
+// Driver cross-view — view 3: the \Driver object directory
+//
+// A third source for the driver census, independent of both the loaded-module
+// list (EnumDeviceDrivers) and the registry service registrations. That
+// independence is the whole point: a driver that unlinks itself from
+// PsLoadedModuleList still needs a driver object to be sent an IRP, so the
+// object directory keeps a name the module list no longer has.
+//
+// OBJECT_DIRECTORY_INFORMATION is deliberately absent from this list — it is
+// not in the Windows metadata (it is DDK-only) and is hand-declared in
+// DriverObjectDirectory.cs. Everything else here CsWin32 generates.
+// ---------------------------------------------------------------------------
+NtOpenDirectoryObject
+NtQueryDirectoryObject
+OBJECT_ATTRIBUTES
+UNICODE_STRING
