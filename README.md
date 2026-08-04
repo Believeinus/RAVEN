@@ -1,6 +1,8 @@
 <div align="center">
 
-# RatScan
+# RAVEN
+
+**Remote Access & Visibility Examination Node**
 
 **Find out what's watching you.**
 
@@ -17,19 +19,20 @@ A Windows remote-access and RAT detection tool that tells you the truth about it
 ---
 
 > [!WARNING]
-> **In active development — phases 0–9 of 11 complete.** The scanner works end to end:
-> it runs, detects, explains, and can shut down what it finds. Still outstanding:
-> scan history and an allowlist, packaging, and the ten end-to-end verification steps
-> in `docs/`. The live watcher's engine exists but is **not wired into the UI** and its
-> elevated path is **unverified** — see `docs/RATSCAN-PROGRESS.md` for the honest
+> **In active development — phases 0–10 of 11 complete.** The scanner runs, detects,
+> explains and can shut down what it finds; scan history, the allowlist, the diff between
+> scans and the live ETW watcher are all wired into the UI, and the watcher has been driven
+> elevated and observed tracing. Still outstanding: **code signing** (the published binary is
+> unsigned, so SmartScreen warns on first run), the ten end-to-end verification steps, and
+> two cross-view rules that are collected but not yet judged. See `docs/` for the honest
 > per-phase state.
 
 ## What it does
 
-RatScan audits a Windows 11 machine for anything that gives a remote party the
-ability to **see your screen, control your input, or reach your files** — commercial
-remote-access products, abused RMM agents, built-in Windows remote surfaces left
-enabled, and purpose-built RATs.
+RAVEN finds — and can shut down — anything on a Windows 11 machine that gives a remote
+party the ability to **see your screen, control your input, or reach your files**:
+commercial remote-access products, abused RMM agents, built-in Windows remote surfaces
+left enabled, and purpose-built RATs.
 
 It runs a deep on-demand scan and a continuous ETW-backed watch, explains every
 finding with its evidence chain, and offers remediation you have to confirm.
@@ -37,7 +40,7 @@ finding with its evidence chain, and offers remediation you have to confirm.
 ## The honest part
 
 > [!IMPORTANT]
-> **RatScan will never tell you "you are clean."**
+> **RAVEN will never tell you "you are clean."**
 
 No user-mode program can prove a machine is unmonitored. Anything running in the
 kernel (a malicious or vulnerable signed driver), below it (a thin hypervisor), or
@@ -46,7 +49,7 @@ monitor) can answer every API this tool calls with clean lies, or bypass the ope
 system entirely. A scanner that renders a green checkmark is at its least trustworthy
 exactly when it matters most.
 
-So RatScan is built to a different goal: **make it very hard for anything to hide, and
+So RAVEN is built to a different goal: **make it very hard for anything to hide, and
 make the remaining blind spots visible and named.** Three things follow from that:
 
 | Commitment | What it means |
@@ -63,7 +66,7 @@ make the remaining blind spots visible and named.** Three things follow from tha
 - **Persistence (ASEP)** — 14 surfaces: Run/RunOnce across both registry views, startup folders, scheduled tasks, **WMI permanent event subscriptions**, Winlogon Shell/Userinit, `AppInit_DLLs`, `AppCertDlls`, IFEO debuggers, COM hijacks, LSA packages, print monitors, netsh helpers.
 - **Trust analysis** — Authenticode verification on every running image, including the catalog path (42 of 60 sampled System32 binaries are catalog-signed, so skipping it would misreport all 42 as unsigned).
 - **Guided remediation** — end a process and its children, stop and disable a service, remove an auto-start entry, turn off a Windows remote feature. Every action shows the exact command first and runs only on explicit confirmation.
-- **Live watch** *(engine only — not yet in the UI)* — real-time ETW over kernel process, image-load and TCP events.
+- **Live watch** — real-time ETW over kernel process, image-load and TCP events, in its own view, alerting once per catalogued tool rather than once per process start. Needs Administrator; without it the view says so and refuses rather than appearing to watch. Process and network events are retained separately from image loads, so a flood of DLL loads cannot push the beacon you care about out of the buffer.
 
 ## Requirements
 
