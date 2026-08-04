@@ -6,6 +6,148 @@ All notable changes to RatScan are recorded here. Format follows
 
 ---
 
+## [Unreleased] — 2026-08-04
+
+### Fixed
+
+- **The published `release/` folder is repaired.** It had been a half-publish since
+  2026-08-03: a stale executable predating the entire Fluent redesign, four native DLLs
+  instead of six (`PenImc_cor3.dll` and `vcruntime140_cor3.dll` were gone), and no `amd64\`
+  directory at all. `amd64\KernelTraceControl.dll` is what TraceEvent needs to open a kernel
+  ETW session, so the shipped build would have failed to trace — and failed in a way that
+  reads to a user as a product fault rather than a packaging one. A security tool silently
+  under-reporting is the worst shape this bug could have taken.
+- The repaired folder was **verified by running it**, not by listing it: a full scan on the
+  published binary rendered a coverage-qualified verdict, produced 16 findings (which is
+  what proves the embedded YAML rule pack survived the single-file pack), wrote a history
+  row, and diffed correctly against the previous scan.
+
+### Deployment
+
+- **A locked executable is now repaired by renaming, not by killing.** The instance that
+  broke the original publish was still running a day later and was *elevated*, so
+  `Stop-Process` returned `Access is denied` from an ordinary shell. A running image cannot
+  be deleted but can be renamed — the same technique updaters use to replace live binaries
+  — which frees the publish path without touching the running process. The previous advice,
+  "close every running RAVEN first", is sound prevention and no use at all as a cure.
+- The published folder now also contains five `.pdb` files. Normal publish output; whether
+  a security tool should ship its symbols is an open question, not a defect.
+
+### Deferred
+
+- **ETW tracing in the published build is still unverified.** Restoring
+  `KernelTraceControl.dll` makes tracing possible; it does not demonstrate that it works.
+  That still needs the single elevated run, as does the `\Driver` cross-view rule and the
+  network cross-view.
+- Live Watch navigation was not exercised in the published build — five foreground
+  acquisitions were denied and the automation aborted rather than click blind. Little was
+  lost: that page refuses on an `IsElevated()` check *before* `KernelTraceControl.dll` is
+  loaded, so it could not have spoken to the DLL in question either way.
+- `release\RAVEN.exe.locked-pid30420` (173 MB) remains until the process holding it exits.
+
+---
+
+## [Unreleased] — 2026-08-03
+
+### Changed
+
+- **The product is now RAVEN — Remote Access & Visibility Examination Node.** The title bar
+  and taskbar show `RAVEN`; the full name appears in the window header, the executable's
+  Windows metadata and the exported report. The executable is `RAVEN.exe`.
+- **The data directory is deliberately still `%LOCALAPPDATA%\RatScan`.** It holds scan
+  history, the allowlist and baselines; renaming it would leave all of that on disk while
+  the app came up looking like a fresh install. Changing it needs a migration, not a new
+  string. Namespaces and project names also keep the old name — a one-way refactor with no
+  user-visible benefit.
+- **The interface is rebuilt on WPF-UI 4.3.0 (Fluent).** `FluentWindow` with an integrated
+  dark title bar, rounded corners, and the RAVEN mark behind the content at 5% opacity.
+  The package was removed on 2026-08-01 for claiming an architecture that did not exist;
+  the note it left said to re-add it when something actually used it, and now something
+  does.
+- **One dashboard became four views** on a navigation shell — Scan, Live watch, History,
+  Settings. `MainWindow` dropped from 1,135 lines to 194 and now owns only the window,
+  navigation, tray and the shared session. Live watch, previously squeezed into ~150 px of a
+  shared column, now has the whole window, so its Start control is no longer below the fold.
+  Scan stays first in the navigation — it is what the tool is opened to do.
+- **Typography follows the Fluent ramp.** Prose at 14 px, dense data at 12 px, and nothing
+  anywhere below 12 px — previously 20 of 44 sized text elements were beneath that floor and
+  40 were beneath Fluent's body size. 21 of 23 hardcoded colours now come from theme brushes;
+  the two that remain carry meaning and must not track a neutral one.
+- The accent is pinned to RAVEN's blue rather than following the Windows accent colour,
+  which rendered every primary button magenta on this machine. The accent is the only strong
+  colour in the window that means nothing, and it sits beside amber and red that do.
+
+### Added
+
+- **Authenticode facts on persistence entries.** Auto-start paths are now resolved before
+  verification — environment variables expanded, bare names probed against the system
+  directories, and Startup-folder shortcuts followed to their target. Unverifiable entries on
+  the development machine went from **87 of 296 down to 5**, and two catalogued tools reached
+  `Confirmed` because the signer could finally be compared.
+- Unsigned images escalate a finding **only on the injection surfaces** (AppInit_DLLs,
+  AppCertDlls, IFEO debugger), where the measured baseline is zero. A general
+  unsigned-auto-start rule was measured and deliberately not written: it fires five times on
+  a healthy machine, every time on the user's own software.
+- Every persistence finding now states its signature position, keeping "not verified",
+  "could not be checked" and "there is none" distinguishable — only the last says anything
+  about the file.
+- **`\Driver` object-directory walk** (`NtOpenDirectoryObject` / `NtQueryDirectoryObject`), a
+  third view of the kernel's drivers independent of both the loaded-module list and the
+  registry. `OBJECT_DIRECTORY_INFORMATION` is hand-declared because it is absent from the
+  Windows metadata; everything else is generated. Collected and disclosed as a named blind
+  spot when it cannot be opened — **not yet judged**, because object names are not file names
+  and the false-match rate needs an elevated baseline first.
+- **Tray icon and background alerting.** Closing the window ends RAVEN unless a live watch is
+  running, in which case it hides to the tray and says so once. The icon carries the logo plus
+  a status dot, because an indicator that looks identical whether the watch is alive or dead
+  is worse than none. Deliberately no start-with-Windows: giving RAVEN its own auto-start
+  entry would make it an instance of the thing it reports.
+- **History view** — recorded scans, newest first, each stating whether it ran elevated,
+  because two scans with different coverage are not two readings of the same thing.
+- **Settings view** — coverage and what it costs, the allowlist in summary, where the data
+  lives, and what the tool does not claim.
+
+### Fixed
+
+- **Every card was pushed off-screen by the first scan after a coverage change.** The
+  "since your last scan" list was an uncapped `ItemsControl` in an `Auto`-height row; a diff
+  spanning an elevation change produces about a hundred rows and drove the findings card to
+  y=2483 in a 1080 px window, with no scrollbar to reach it. The list is now capped and
+  scrollable, and its total is stated in the header.
+- Print monitors and netsh helpers stored bare DLL names that never reached path resolution.
+- Startup-folder entries verified the `.lnk` instead of its target, so every Startup item on
+  every machine reported as unsigned.
+- `Card` and `SectionTitle` styles moved to application scope. At window scope the navigation
+  pages could not see them at all — the same class of bug as the black-on-black text fixed on
+  2026-08-02, for a second reason.
+
+### Deployment
+
+- **The project is public at `github.com/Believeinus/RAVEN`** — README and artwork only. No
+  source code has been pushed and no remote is configured on the local repository.
+- Branding generated from the master logo rather than shipping it: a 1280×640 social banner
+  and a 480² mark. The README carries what the tool examines, how it decides, the privacy
+  position and a short FAQ; the repository carries fourteen topics.
+- Screenshots in the README are of the **empty state, deliberately**. A populated scan would
+  publish which remote-access software is installed on the machine it ran on, the machine
+  name and the user's home path — the same telemetry the tool warns about before writing an
+  export.
+
+### Deferred
+
+- `ui:ContentDialog` has not replaced the `MessageBox` confirmations, and `MuteDialog` is
+  still a plain `Window`.
+- The published `release/` folder is a broken half-publish and must be regenerated; the
+  delete-and-republish ran while an elevated instance held a lock on the executable.
+- The `\Driver` cross-view rule, the network cross-view and a verified elevated live watch
+  all still wait on a single elevated run.
+- Populated or blurred screenshots for the README — deliberately postponed; the empty state
+  stands for now.
+- The GitHub social preview image cannot be set through the API and needs one manual upload
+  (**Settings → General → Social preview**); the banner is already sized for it.
+
+---
+
 ## [Unreleased] — 2026-08-01
 
 ### Added

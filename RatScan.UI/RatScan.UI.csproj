@@ -43,18 +43,22 @@
   </ItemGroup>
 
   <!--
-    One package reference, and it earns its place: the tray icon is the only way the live
-    watch can outlive its window, and a watcher that dies when you close the window cannot
-    catch a thirty-second beacon.
+    Two package references, both of which are now actually used.
 
-    Wpf.Ui, CommunityToolkit.Mvvm and Microsoft.Extensions.Hosting remain removed. They
-    were added in phase 0 for a Fluent/MVVM/host build that was never written - the shell
-    is a plain Window with code-behind and a hand-rolled theme. Microsoft.Data.Sqlite
-    belongs to the engine and arrives transitively. A dependency list that claims an
-    architecture the code does not have is its own small dishonesty, and it is the kind
-    this project exists to refuse. Re-add one when something actually uses it.
+    WPF-UI was referenced from phase 0 and removed on 2026-08-01 for claiming an
+    architecture that did not exist: the shell was a plain Window with a hand-rolled
+    theme and nothing imported Wpf.Ui anywhere. The note left behind said to re-add it
+    when something actually used it, and that condition is now met - the shell is a
+    FluentWindow and the theme comes from ThemesDictionary rather than from a handful of
+    hex literals. Same story for the tray icon, which is the only way the live watch can
+    outlive its window.
+
+    CommunityToolkit.Mvvm and Microsoft.Extensions.Hosting stay removed. There is still
+    no view-model layer and no host, and listing them would restate the same small
+    dishonesty the removal was about.
   -->
   <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
   </ItemGroup>
 

@@ -37,8 +37,26 @@ public partial class App : Application
             return;
         }
 
+        ApplyBrandAccent();
+
         base.OnStartup(e);
     }
+
+    /// <summary>
+    /// Pins the accent to RAVEN's own blue instead of following the Windows accent colour.
+    /// <para>
+    /// WPF-UI defaults to the system accent, which on this machine renders every primary
+    /// button and the navigation selection in magenta. That is not a taste objection: the
+    /// accent is the only strong colour in the window that does not mean anything, and it
+    /// sits beside amber and red that do. Letting a personalisation setting decide it means
+    /// severity colour and decoration can end up the same hue on somebody's machine.
+    /// </para>
+    /// </summary>
+    private static void ApplyBrandAccent() =>
+        Wpf.Ui.Appearance.ApplicationAccentColorManager.Apply(
+            System.Windows.Media.Color.FromRgb(0x4C, 0x8D, 0xFF),
+            Wpf.Ui.Appearance.ApplicationTheme.Dark,
+            systemGlassColor: false);
 
     private static bool ShouldRelaunchElevated(string[] args) =>
         !IsElevated()

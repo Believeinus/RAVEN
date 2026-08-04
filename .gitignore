@@ -5,6 +5,11 @@
 /docs/*-PROGRESS.md
 /docs/SECURITY-AUDIT*.md
 
+# ---- Agent tooling (not product code) ----
+/.agents/
+/.codex/
+/skills-lock.json
+
 # ---- .NET build output ----
 [Bb]in/
 [Oo]bj/
