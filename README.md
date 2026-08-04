@@ -54,19 +54,45 @@ make the remaining blind spots visible and named.** Three things follow from tha
 
 | Commitment | What it means |
 |---|---|
-| **Cross-view detection** | Processes, connections, services and drivers are each enumerated from 3–5 *independent* kernel interfaces and diffed. Something that unhooks one API but not the others produces a discrepancy — and the discrepancy is itself a critical finding. This is how you catch active concealment, as opposed to mere unfamiliarity. |
-| **Scan Integrity panel** | Every scan reports the conditions it ran under: elevation, Secure Boot, HVCI/VBS, Defender + tamper-protection health, test-signing, kernel debugger, hypervisor presence. The verdict is explicitly qualified by these. |
-| **Coverage-qualified verdicts** | The headline is never "clean." It reads *"No evidence of remote access found — across N surfaces, with these M blind spots,"* and the blind spots are enumerated and clickable. |
+| **Cross-view detection** | Processes are enumerated from **four independent kernel interfaces** and diffed; kernel drivers from **three** — the loaded-module list, the Services registry, and the `\Driver` object directory. Something that unhooks one API but not the others produces a discrepancy, and the discrepancy is itself the finding. This is how you catch active concealment rather than mere unfamiliarity. Two limits stated plainly: the `\Driver` view is collected and disclosed but **not yet judged**, and TCP connections still come from a single interface. |
+| **Scan Integrity panel** | Every scan reports the conditions it ran under — Administrator rights, Secure Boot, memory integrity (HVCI), driver signature enforcement, test-signing mode, kernel debug mode, and kernel debugger presence — and the verdict is explicitly qualified by them. |
+| **Coverage-qualified verdicts** | The headline is never "clean." It reads *"No evidence of remote access found — across N surfaces, with these M blind spots,"* and every blind spot is listed by name underneath, with the reason it could not be examined and the remedy where one exists. `VerdictLevel` has no `Clean` member by construction, and a test asserts the output never claims safety. |
 
 ## Detection coverage
 
-- **Known remote-access software** — ~60 products (AnyDesk, TeamViewer, RustDesk, ScreenConnect, NetSupport, Remote Utilities, the VNC family, RMM agents…), matched on process, service, driver, path, signer, and registry footprint. Portable/uninstalled instances are scored *higher* — that's the support-scam signature.
+- **Known remote-access software** — 56 catalogued products (AnyDesk, TeamViewer, RustDesk, ScreenConnect, NetSupport, Remote Utilities, the VNC family, RMM agents…), matched on process, service, driver, path, signer, and registry footprint. Portable/uninstalled instances are scored *higher* — that's the support-scam signature.
 - **Windows' own remote surfaces** — RDP (including the `Shadow` policy, which permits silent session watching), WinRM, PS Remoting, OpenSSH, Remote Registry, Remote Assistance, Quick Assist, SMB sessions, `netsh portproxy`, inbound firewall rules.
 - **Screen & input surveillance** — capture-capable module correlation, virtual/indirect display drivers, injected-hook footprints, UIAccess tokens, virtual HID drivers.
 - **Persistence (ASEP)** — 14 surfaces: Run/RunOnce across both registry views, startup folders, scheduled tasks, **WMI permanent event subscriptions**, Winlogon Shell/Userinit, `AppInit_DLLs`, `AppCertDlls`, IFEO debuggers, COM hijacks, LSA packages, print monitors, netsh helpers.
 - **Trust analysis** — Authenticode verification on every running image, including the catalog path (42 of 60 sampled System32 binaries are catalog-signed, so skipping it would misreport all 42 as unsigned).
 - **Guided remediation** — end a process and its children, stop and disable a service, remove an auto-start entry, turn off a Windows remote feature. Every action shows the exact command first and runs only on explicit confirmation.
 - **Live watch** — real-time ETW over kernel process, image-load and TCP events, in its own view, alerting once per catalogued tool rather than once per process start. Needs Administrator; without it the view says so and refuses rather than appearing to watch. Process and network events are retained separately from image loads, so a flood of DLL loads cannot push the beacon you care about out of the buffer.
+
+## In the app
+
+Four views on a Fluent shell, sharing one scan session:
+
+- **Scan** — the verdict and its coverage line, every finding with its evidence chain, what
+  the scan could not see, what changed since the last scan, and the allowlist in full.
+- **Live watch** — the ETW feed described above, with its own start control.
+- **History** — every recorded scan, newest first, each stating whether it ran elevated,
+  because two scans taken at different coverage are not two readings of the same thing.
+- **Settings** — what coverage you currently have and what it costs, the allowlist in
+  summary, where the data lives, and what the tool does not claim.
+
+Plus:
+
+- **Diff between scans** — what appeared and what disappeared, with a caveat line when the
+  two scans are not comparable. A finding that vanished because this scan saw *less* is not
+  reported as good news.
+- **Allowlist ("this is mine")** — muting requires a written reason and pins the SHA-256 of
+  the file it excuses, so replacing that file brings the finding straight back. Muted items
+  stay listed with your reason, and the scan says when muting changed its own verdict.
+- **Export** — HTML to read or JSON to process, after a prompt that says what the file will
+  contain about your machine.
+- **Tray** — closing the window ends RAVEN unless a watch is running, in which case it hides
+  to the tray and says so. Deliberately no start-with-Windows: giving RAVEN its own
+  auto-start entry would make it an instance of the thing it reports.
 
 ## Requirements
 
@@ -84,10 +110,26 @@ dotnet publish RatScan.UI -c Release -r win-x64 --self-contained /p:PublishSingl
 
 ## Privacy
 
-Offline by default. No telemetry. VirusTotal enrichment is opt-in, uses your own API
-key, and the UI states when a hash is about to leave the machine. The local scan
-database holds host telemetry (process paths, connections, usernames) and is
-gitignored — don't commit or share it casually.
+**Offline. Not "offline by default" — there is no network client in the product at all.**
+No telemetry, no update check, no reputation lookup: nothing about your machine leaves it,
+because nothing in the code can send it.
+
+What does hold your data is local. `%LOCALAPPDATA%\RatScan\ratscan.db` stores scan history,
+the allowlist and baselines — process paths, listening ports, usernames — and is gitignored.
+Exported reports contain the same detail, which is why the export prompt says so before it
+writes. Treat both as a description of your computer, because that is what they are.
+
+## Planned
+
+- **Code signing**, so the published binary stops tripping SmartScreen.
+- **VirusTotal enrichment** — opt-in, off by default, using your own API key, with the UI
+  announcing each hash at the moment it is about to leave the machine. It is not built yet,
+  and the offline guarantee above holds until it is: the day that changes, this README and
+  the app will both say so before anything is sent.
+- **Two cross-view rules** that are collected but not yet judged — the `\Driver` object
+  directory against the loaded-module list, and a second independent source for TCP
+  connections via ETW.
+- Signature rules for the driver census beyond the unregistered-driver case.
 
 ## Documentation
 
