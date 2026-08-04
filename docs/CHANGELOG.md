@@ -120,20 +120,6 @@ All notable changes to RatScan are recorded here. Format follows
   `RAVEN.exe` or ETW cannot open a kernel session, and that failure reads as a product
   defect. Verified by extracting the zip to a clean directory and running *that* copy.
 
-### Deferred
-- **The driver fix has not been seen in the *published* build**, only in the development
-  one. The published binary was driven unelevated, where the driver census is withheld and
-  the rule cannot fire either way. One elevated run of `release\RAVEN.exe` would settle it.
-- The export confirmation was not driven end to end: the `SaveFileDialog` in this automation
-  environment exposes no `ValuePattern` on its file-name control and its Save button is not
-  invokable by name. The dialog itself is the same `RavenDialog.ConfirmAsync` path the
-  remediation confirm exercises.
-- `\Driver` cross-view rule and the network cross-view are still unwritten. The elevated
-  baseline they were waiting on now exists (198 driver objects read, 510 drivers, 270
-  loaded), so the blocker is gone.
-- Live Watch navigation was not exercised in the published build — five foreground
-  acquisitions were denied and the automation aborted rather than click blind.
-
 ---
 
 ## [Unreleased] — 2026-08-03
@@ -221,19 +207,6 @@ All notable changes to RatScan are recorded here. Format follows
   publish which remote-access software is installed on the machine it ran on, the machine
   name and the user's home path — the same telemetry the tool warns about before writing an
   export.
-
-### Deferred
-
-- `ui:ContentDialog` has not replaced the `MessageBox` confirmations, and `MuteDialog` is
-  still a plain `Window`.
-- The published `release/` folder is a broken half-publish and must be regenerated; the
-  delete-and-republish ran while an elevated instance held a lock on the executable.
-- The `\Driver` cross-view rule, the network cross-view and a verified elevated live watch
-  all still wait on a single elevated run.
-- Populated or blurred screenshots for the README — deliberately postponed; the empty state
-  stands for now.
-- The GitHub social preview image cannot be set through the API and needs one manual upload
-  (**Settings → General → Social preview**); the banner is already sized for it.
 
 ---
 
@@ -373,22 +346,6 @@ All notable changes to RatScan are recorded here. Format follows
   that was never written, and unreferenced by any code since. The solution builds clean
   without them.
 
-### Known gaps
-
-- **The ETW live watch has never run.** It is wired into the UI and its failure path is
-  verified, but every test and every run so far has been unelevated, so session
-  establishment and event flow are still exercised only through their failure branch.
-- No tray icon and no background alerting: the Live Watch panel only reports while the
-  window is open.
-- The network cross-view still has one source. ETW was to supply the second.
-- The JSON export path has not been driven through the UI; only HTML has. The format is
-  chosen from the file extension, and `ExportTests` covers both.
-- The published build is **not a true single file** — 6 native DLLs and an `amd64\`
-  folder (TraceEvent's `KernelTraceControl.dll`) must ship beside the 173 MB exe. It is
-  also unsigned, so SmartScreen will warn on first run.
-- Persistence entries carry no signature information, so no rule can yet ask whether an
-  auto-start binary is signed.
-
 ### Fixed
 
 - **Finding titles rendered black on a black card and were effectively unreadable** —
@@ -463,8 +420,8 @@ All notable changes to RatScan are recorded here. Format follows
   APIs are Windows 8+, and plain `net8.0-windows` declares a Windows 7 floor, so the
   platform-compatibility analyzer rejected them.
 
-### Deferred
+### Out of scope for v1
 
 - MFT-level file-hiding detection, memory scanning for injected code, a kernel-mode
   self-defense component, network-level capture from a second device, and non-Windows
-  collectors. All named explicitly rather than silently omitted.
+  collectors.

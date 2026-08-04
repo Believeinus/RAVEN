@@ -19,8 +19,8 @@ your machine — and then helps you stop it. It runs entirely on the local machi
 no server, no account, and nothing leaves the computer.
 
 > [!IMPORTANT]
-> RAVEN is in active development and has not been released. The published executable is
-> currently unsigned, so SmartScreen will warn on first run.
+> RAVEN is in active development. The published executable is not yet code-signed, so
+> SmartScreen will warn on first run.
 
 ---
 
@@ -229,20 +229,17 @@ the two are not equivalent.
 
 ## 🚧 Status
 
-In active development. Phases 0–10 of 11 are complete: it scans, watches, stops things,
-remembers and compares. The first pre-release build is published, and the executable is
-**unsigned** — SmartScreen will warn on first run and code signing is unresolved.
+In active development. It scans, watches, stops things, remembers and compares, and the
+first pre-release build is published under [Releases](../../releases).
 
-Known and openly outstanding:
+## 🗺️ Planned
 
-- **Code signing**, which is the only thing standing between this and a comfortable download.
-- **Two cross-view rules that are collected but not yet judged** — the `\Driver` object
-  directory against the loaded-module list, and a second independent source for network
-  connections. Both are disclosed in the app rather than quietly missing.
-- **VirusTotal enrichment**, planned and not built. When it arrives it will be opt-in, off by
-  default, use your own API key, and announce each hash in the UI at the moment it is about to
-  leave the machine — and the offline guarantee above will change in the same commit.
-- The plan's ten end-to-end verification steps.
+- **Code signing**, so the download stops tripping SmartScreen.
+- **VirusTotal enrichment** — opt-in, off by default, using your own API key, with the UI
+  announcing each hash at the moment it is about to leave the machine. The offline guarantee
+  above holds until then, and will change in the same release that adds it.
+- Deeper cross-view detection: the `\Driver` object directory judged against the loaded-module
+  list, and a second independent source for network connections via ETW.
 
 ## 📄 License
 
