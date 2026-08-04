@@ -11,6 +11,7 @@
 /skills-lock.json
 
 # ---- .NET build output ----
+/dist/
 [Bb]in/
 [Oo]bj/
 [Dd]ebug/

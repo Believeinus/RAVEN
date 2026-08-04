@@ -8,6 +8,54 @@ All notable changes to RatScan are recorded here. Format follows
 
 ## [Unreleased] — 2026-08-04
 
+### Security
+
+- **The unregistered-driver rule no longer reports fifty Windows drivers as rootkits.**
+  `concealment.unregistered-driver` rested on a premise — that the supported way to load a
+  driver always leaves a service key, so a loaded module without one was mapped in by hand.
+  The first elevated scan measured it: 50 of this machine's 270 loaded modules have no
+  service key of their own, including `ntoskrnl.exe`, `hal.dll`, `CI.dll`, `win32k.sys` and
+  the whole HID and storage dependency chain. Dependency imports and boot-loaded code are
+  loaded by something other than the service control manager. The rule now requires the
+  missing registration **and** a failed signature verification, which is what manual mapping
+  is actually for. Measured on this machine: 47 verified Microsoft-signed and are no longer
+  reported, and the elevated verdict went from **56 high-severity findings to 6** — the same
+  four real surfaces the unelevated scan finds, no longer buried under fifty false ones.
+- **`Unknown` is excluded alongside `Valid`, and that is the same rule twice.** A signature
+  that could not be checked is not a signature that failed. The three modules affected are
+  Windows' crash-dump stack (`dump_stornvme.sys` and its siblings) — in-memory copies whose
+  files deliberately do not exist on disk, confirmed by hand before the rule was written.
+- **They are disclosed rather than dropped.** A driver mapped straight into memory would
+  have exactly that shape, so `DriverCollector` now emits a blind spot naming the
+  unverifiable modules. Elevated blind spots go 1 → 2, and the count of things this scan
+  could not establish stays honest.
+- **The guard test that should have caught this was blind.**
+  `No_concealment_findings_on_this_machine` asserts the detector stays silent here, and it
+  passed throughout — it built a `DetectionContext` with `Drivers` left null, so the rule
+  never executed inside it. It now collects the census for real. A guard that cannot see the
+  rule it guards does not fail; it certifies.
+
+### Added
+
+- **Confirmations are `ui:ContentDialog` instead of `MessageBox`.** The primary button
+  carries the name of the action — *Write the report*, *Turn off Remote Assistance*, *Mute
+  this finding* — never "OK", and it is red only where the risk is not reversible. Cancel is
+  the default button, so Enter on an unread dialog does nothing. The dialog that names the
+  exact command about to run no longer arrives looking like every "are you sure?" the user
+  has clicked through. `MainWindow` hosts one `ContentDialogHost` for the whole shell.
+- `MuteDialog` is a `ContentDialog` rather than its own `Window`, so a decision about the
+  finding on screen no longer takes that context away.
+
+### Verified
+
+- **The ETW live watch has been driven elevated and it traces.** Process starts, image loads
+  and TCP connections all arrive; 5,000 events in a ten-minute window. Every previous run
+  had exercised only the unelevated refusal path, so this closes the last capability in the
+  product that had never been observed working.
+- The published build was regenerated after the driver fix and driven again: coverage-
+  qualified verdict, 14 findings rendered (which is what proves the embedded YAML rule pack
+  survived the single-file pack), 5 blind spots, history row written.
+
 ### Fixed
 
 - **The published `release/` folder is repaired.** It had been a half-publish since
@@ -33,17 +81,43 @@ All notable changes to RatScan are recorded here. Format follows
 - The published folder now also contains five `.pdb` files. Normal publish output; whether
   a security tool should ship its symbols is an open question, not a defect.
 
-### Deferred
+- `release\RAVEN.exe.locked-pid30420` is gone. The process holding it exited after three
+  days, and `release/` was republished clean: 179.7 MB executable, six native DLLs,
+  `amd64\KernelTraceControl.dll` and `amd64\msdia140.dll` both present.
 
-- **ETW tracing in the published build is still unverified.** Restoring
-  `KernelTraceControl.dll` makes tracing possible; it does not demonstrate that it works.
-  That still needs the single elevated run, as does the `\Driver` cross-view rule and the
-  network cross-view.
+- **The live watch no longer forgets what it saw.** Process/network events and image loads
+  shared one 5,000-event ring, and the first elevated run measured what that means: ten
+  minutes produced 5,000 events, 4,885 of them image loads, so the buffer was full and
+  discarding — at roughly 42 image loads for every event worth reading. A watcher that
+  silently drops the beacon it saw is the failure this component exists to refuse. The two
+  now have separate budgets (5,000 signal events, 1,000 image loads), which at the measured
+  rate holds about seven hours of process and network history instead of ten minutes, and
+  anything discarded is counted and stated in the view rather than dropped quietly.
+
+### Added
+
+- **MIT licence.** The repo had no `LICENSE`, so nobody receiving a copy had any stated
+  right to use it. The README now says so, and says plainly that the published binary is
+  unsigned and will trip SmartScreen.
+- **A distributable zip** — `dist/RAVEN-win-x64.zip`, 73.9 MB, the whole published folder
+  minus the `.pdb` files, with `LICENSE` and `README.md` beside the executable. It is the
+  folder that has to travel, not the exe: `amd64\KernelTraceControl.dll` must sit next to
+  `RAVEN.exe` or ETW cannot open a kernel session, and that failure reads as a product
+  defect. Verified by extracting the zip to a clean directory and running *that* copy.
+
+### Deferred
+- **The driver fix has not been seen in the *published* build**, only in the development
+  one. The published binary was driven unelevated, where the driver census is withheld and
+  the rule cannot fire either way. One elevated run of `release\RAVEN.exe` would settle it.
+- The export confirmation was not driven end to end: the `SaveFileDialog` in this automation
+  environment exposes no `ValuePattern` on its file-name control and its Save button is not
+  invokable by name. The dialog itself is the same `RavenDialog.ConfirmAsync` path the
+  remediation confirm exercises.
+- `\Driver` cross-view rule and the network cross-view are still unwritten. The elevated
+  baseline they were waiting on now exists (198 driver objects read, 510 drivers, 270
+  loaded), so the blocker is gone.
 - Live Watch navigation was not exercised in the published build — five foreground
-  acquisitions were denied and the automation aborted rather than click blind. Little was
-  lost: that page refuses on an `IsElevated()` check *before* `KernelTraceControl.dll` is
-  loaded, so it could not have spoken to the DLL in question either way.
-- `release\RAVEN.exe.locked-pid30420` (173 MB) remains until the process holding it exits.
+  acquisitions were denied and the automation aborted rather than click blind.
 
 ---
 

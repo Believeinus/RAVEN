@@ -7,6 +7,7 @@
 A Windows remote-access and RAT detection tool that tells you the truth about its own blind spots.
 
 ![status](https://img.shields.io/badge/status-in%20development-orange)
+![license](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4)
 ![dotnet](https://img.shields.io/badge/.NET-8.0-512BD4)
 ![ui](https://img.shields.io/badge/UI-WPF-blue)
@@ -88,3 +89,14 @@ gitignored — don't commit or share it casually.
 ## Documentation
 
 See [`docs/`](docs/) — changelog, build log, and the phase checkpoint.
+
+## License
+
+[MIT](LICENSE). Use it, fork it, ship it — with the warranty disclaimer meant literally:
+this is a detection tool with named blind spots, and it can be wrong in both directions.
+
+The published binary is **not code-signed**, so Windows SmartScreen warns on first run and
+some anti-malware products may quarantine it. That is the expected reaction to an unsigned
+executable that enumerates processes across four kernel interfaces, reads the driver list
+and opens an ETW kernel session — the same behaviours the tool exists to look for. Build it
+yourself if you would rather not trust a binary.
