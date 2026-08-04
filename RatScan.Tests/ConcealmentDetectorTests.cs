@@ -2,6 +2,7 @@ using RatScan.Engine.Collectors;
 using RatScan.Engine.Detection;
 using RatScan.Engine.Model;
 using RatScan.Native.Processes;
+using RatScan.Native.Signing;
 using Xunit.Abstractions;
 
 namespace RatScan.Tests;
@@ -230,8 +231,20 @@ public sealed class ConcealmentDetectorTests(ITestOutputHelper output)
                 AddressesWithheld = false,
                 Drivers =
                 [
-                    new DriverEntry { Name = "manual.sys", IsLoaded = true, IsRegistered = false },
-                    new DriverEntry { Name = "normal.sys", IsLoaded = true, IsRegistered = true },
+                    new DriverEntry
+                    {
+                        Name = "manual.sys",
+                        IsLoaded = true,
+                        IsRegistered = false,
+                        Signature = Signed("manual.sys", SignatureStatus.Unsigned),
+                    },
+                    new DriverEntry
+                    {
+                        Name = "normal.sys",
+                        IsLoaded = true,
+                        IsRegistered = true,
+                        Signature = Signed("normal.sys", SignatureStatus.Valid),
+                    },
                 ],
             },
         };
@@ -242,6 +255,80 @@ public sealed class ConcealmentDetectorTests(ITestOutputHelper output)
         Assert.Equal("concealment.unregistered-driver", finding.RuleId);
         Assert.Equal("manual.sys", finding.Subject);
     }
+
+    /// <summary>
+    /// The measured correction. Windows loads dozens of modules with no service key of
+    /// their own — dependency imports and boot-loaded code — and every one of them is
+    /// signed. Reporting on the missing registration alone produced 50 Highs against a
+    /// healthy machine on 2026-08-04.
+    /// </summary>
+    [Theory]
+    [InlineData(SignatureStatus.Valid)]      // ntoskrnl.exe, hal.dll, CI.dll, win32k.sys
+    [InlineData(SignatureStatus.Unknown)]    // the dump_* crash-dump stack: no file on disk
+    public void A_signed_or_unverifiable_unregistered_driver_is_not_reported(SignatureStatus status)
+    {
+        var findings = DetectOn(new DriverEntry
+        {
+            Name = "inbox.sys",
+            IsLoaded = true,
+            IsRegistered = false,
+            Signature = Signed("inbox.sys", status),
+        });
+
+        Assert.Empty(findings);
+    }
+
+    /// <summary>
+    /// A scan that did not verify signatures has not established anything about them, and
+    /// the rule now rests on the signature. Silence is the only honest output.
+    /// </summary>
+    [Fact]
+    public void An_unregistered_driver_is_not_reported_when_signatures_were_not_verified()
+    {
+        var findings = DetectOn(new DriverEntry
+        {
+            Name = "unchecked.sys",
+            IsLoaded = true,
+            IsRegistered = false,
+            Signature = null,
+        });
+
+        Assert.Empty(findings);
+    }
+
+    [Theory]
+    [InlineData(SignatureStatus.TamperedDigest)]
+    [InlineData(SignatureStatus.Revoked)]
+    [InlineData(SignatureStatus.UntrustedRoot)]
+    public void An_unregistered_driver_that_fails_verification_is_still_reported(SignatureStatus status)
+    {
+        var finding = Assert.Single(DetectOn(new DriverEntry
+        {
+            Name = "mapped.sys",
+            IsLoaded = true,
+            IsRegistered = false,
+            Signature = Signed("mapped.sys", status),
+        }));
+
+        output.WriteLine($"{finding.Severity}: {finding.Title}");
+        Assert.Equal("mapped.sys", finding.Subject);
+    }
+
+    private static List<Finding> DetectOn(DriverEntry driver) =>
+        new ConcealmentDetector().Detect(new DetectionContext
+        {
+            Processes = new ProcessCollectionResult { Processes = [], Coverage = HealthyCoverage },
+            Drivers = new DriverCensusResult { AddressesWithheld = false, Drivers = [driver] },
+        })
+        .Where(f => f.RuleId == "concealment.unregistered-driver")
+        .ToList();
+
+    private static SignatureInfo Signed(string name, SignatureStatus status) => new()
+    {
+        FilePath = $@"C:\WINDOWS\System32\drivers\{name}",
+        Status = status,
+        SignerName = status == SignatureStatus.Valid ? "Microsoft Windows" : null,
+    };
 }
 
 public sealed class ConcealmentOnThisMachineTests(ITestOutputHelper output)
@@ -250,12 +337,32 @@ public sealed class ConcealmentOnThisMachineTests(ITestOutputHelper output)
     /// The live counterpart: on a healthy machine the detector must find nothing. A
     /// detector that fires here would be worse than useless, since a permanent
     /// "rootkit detected" trains the user to ignore it.
+    /// <para>
+    /// This test passed for weeks while the unregistered-driver rule fired 50 times on this
+    /// machine, because the context it built left <c>Drivers</c> null and the rule had
+    /// nothing to iterate. A guard that cannot see the rule it guards is worse than no
+    /// guard: it certifies. The census is collected for real now, which also means this
+    /// test only exercises the driver rules when it runs elevated — unelevated, Windows
+    /// withholds the image bases and the loaded view is empty by design.
+    /// </para>
     /// </summary>
     [Fact]
     public void No_concealment_findings_on_this_machine()
     {
         var processes = new ProcessCollector().Collect(ScanOptions.Quick with { ProbePidSpace = true });
-        var context = new DetectionContext { Processes = processes };
+        var drivers = new DriverCollector().Collect();
+        var context = new DetectionContext { Processes = processes, Drivers = drivers };
+
+        output.WriteLine(
+            $"elevated={IsElevated()} drivers={drivers.Drivers.Count} "
+            + $"loadedWithoutRegistration={drivers.Drivers.Count(d => d.LoadedWithoutRegistration)}");
+
+        if (drivers.AddressesWithheld)
+        {
+            output.WriteLine(
+                "NOTE: unelevated, so the loaded-module view is empty and the driver rules "
+                + "were not exercised by this run.");
+        }
 
         var findings = new ConcealmentDetector().Detect(context)
             .Where(f => f.Category == FindingCategory.Concealment)
@@ -362,5 +469,75 @@ public sealed class ConcealmentOnThisMachineTests(ITestOutputHelper output)
         }
 
         Assert.Empty(findings);
+    }
+
+    /// <summary>
+    /// Measurement, not a guard — the baseline invariant 16 asks for before a rule is
+    /// written or narrowed.
+    /// <para>
+    /// <c>concealment.unregistered-driver</c> was written against a premise: the supported
+    /// way to load a driver always leaves a service key, so a loaded module without one was
+    /// manually mapped. The first elevated scan (2026-08-04) reported it 50 times, every one
+    /// of them an inbox Microsoft module — <c>BOOTVID.dll</c>, <c>CI.dll</c>,
+    /// <c>CLASSPNP.SYS</c>, the <c>dump_*</c> stack. Dependency imports and boot-loaded
+    /// modules legitimately have no service key of their own.
+    /// </para>
+    /// <para>
+    /// Unelevated this measures nothing and says so: Windows withholds kernel image bases,
+    /// the loaded view is dropped wholesale, and every count below would be a privilege
+    /// limit dressed up as an observation.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Driver_census_baseline_on_this_machine()
+    {
+        var census = new DriverCollector().Collect();
+
+        output.WriteLine(
+            $"elevated={IsElevated()} addressesWithheld={census.AddressesWithheld} "
+            + $"driverObjectsRead={census.DriverObjectsRead} driverObjects={census.DriverObjects.Count}");
+
+        output.WriteLine(
+            $"drivers={census.Drivers.Count} loaded={census.Drivers.Count(d => d.IsLoaded)} "
+            + $"registered={census.Drivers.Count(d => d.IsRegistered)}");
+
+        if (census.AddressesWithheld)
+        {
+            output.WriteLine(
+                "NOTE: image bases withheld, so the loaded view is empty by design. This run "
+                + "measured nothing — re-run it elevated.");
+        }
+
+        var unregistered = census.Drivers.Where(d => d.LoadedWithoutRegistration).ToList();
+        output.WriteLine($"loadedWithoutRegistration={unregistered.Count}");
+
+        foreach (var group in unregistered
+            .GroupBy(d => d.Signature?.Status)
+            .OrderByDescending(g => g.Count()))
+        {
+            output.WriteLine($"  signature {group.Key?.ToString() ?? "not verified"}: {group.Count()}");
+        }
+
+        foreach (var driver in unregistered.OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var signature = driver.Signature;
+            var onDisk = driver.ImagePath is { } path && File.Exists(path);
+
+            output.WriteLine(
+                $"  {driver.Name} | {signature?.Status.ToString() ?? "not verified"}"
+                + $" | catalog={signature?.IsCatalogSigned.ToString() ?? "-"}"
+                + $" | signer={signature?.SignerName ?? "-"}"
+                + $" | onDisk={onDisk}"
+                + $" | {driver.ImagePath ?? "no path"}");
+        }
+
+        Assert.NotEmpty(census.Drivers);
+    }
+
+    private static bool IsElevated()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return new System.Security.Principal.WindowsPrincipal(identity)
+            .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     }
 }

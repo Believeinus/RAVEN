@@ -1,6 +1,7 @@
 using System.Globalization;
 using RatScan.Engine.Model;
 using RatScan.Native.Processes;
+using RatScan.Native.Signing;
 
 namespace RatScan.Engine.Detection;
 
@@ -175,28 +176,49 @@ public sealed class ConcealmentDetector : IDetector
     }
 
     /// <summary>
-    /// A driver in kernel memory with no service registration behind it. The supported
-    /// way to load a driver leaves a registry trace; skipping it is characteristic of
-    /// manual mapping.
+    /// A driver in kernel memory, with no service registration behind it, whose image does
+    /// not verify.
+    /// <para>
+    /// The missing registration alone used to be the whole rule, on the premise that the
+    /// supported load path always leaves a registry trace. The first elevated scan measured
+    /// that premise and it is false: 50 of this machine's 270 loaded modules have no service
+    /// key of their own — <c>ntoskrnl.exe</c>, <c>hal.dll</c>, <c>CI.dll</c>, <c>win32k.sys</c>,
+    /// the whole HID and storage dependency chain — because dependency imports and
+    /// boot-loaded modules are loaded by something other than the service control manager.
+    /// A rule that reports fifty Highs on a healthy machine does not detect rootkits, it
+    /// teaches the user to close the window.
+    /// </para>
+    /// <para>
+    /// What manual mapping is actually for is loading code Windows would otherwise refuse,
+    /// so the signature carries the signal and the registration only narrows where to look.
+    /// Of those 50, 47 verified as Microsoft-signed and are not reported. The remaining 3
+    /// are the crash-dump stack (<c>dump_stornvme.sys</c> and friends), in-memory copies
+    /// whose files deliberately do not exist on disk: they come back <c>Unknown</c>, which
+    /// means <em>could not be checked</em> and must never be judged as <em>unsigned</em>.
+    /// They are disclosed as a blind spot by the collector instead of accused here.
+    /// </para>
     /// </summary>
     private static IEnumerable<Finding> UnregisteredDrivers(DriverCensusResult drivers) =>
         drivers.Drivers
-            .Where(d => d.LoadedWithoutRegistration)
+            .Where(d => d.LoadedWithoutRegistration && FailsVerification(d.Signature))
             .Select(driver => new Finding
             {
                 RuleId = "concealment.unregistered-driver",
-                Title = $"Kernel driver '{driver.Name}' is loaded with no service registration",
+                Title = $"Kernel driver '{driver.Name}' is loaded with no service registration "
+                        + "and does not verify",
                 Severity = Severity.High,
                 Confidence = Confidence.Likely,
                 Category = FindingCategory.Concealment,
                 Subject = driver.Name,
                 MitreTechnique = "T1014",
                 Explanation =
-                    "This driver is resident in kernel memory but has no corresponding entry under "
-                    + "the Services registry key. Loading a driver through the supported path always "
-                    + "creates one, so its absence suggests the driver was mapped into the kernel "
-                    + "directly — a technique used to avoid both the signing requirement and the "
-                    + "registry trace.",
+                    "This driver is resident in kernel memory, has no corresponding entry under the "
+                    + "Services registry key, and its image fails signature verification. Kernel "
+                    + "modules loaded by another driver rather than by the service control manager "
+                    + "legitimately have no registration, so that alone means little — but they are "
+                    + "signed. Code that is both loaded outside the supported path and unsigned is "
+                    + "what mapping a driver into the kernel directly looks like, a technique used "
+                    + "to avoid the signing requirement itself.",
                 Recommendation =
                     "Identify the driver before acting. Kernel code runs below every user-mode "
                     + "protection on the machine, including this tool.",
@@ -207,7 +229,23 @@ public sealed class ConcealmentDetector : IDetector
                     Evidence.Of("Loaded in kernel", "yes", "EnumDeviceDrivers"),
                     Evidence.Of("Service registration", "absent",
                         @"HKLM\SYSTEM\CurrentControlSet\Services"),
-                    Evidence.Of("Signature", driver.Signature?.Status.ToString() ?? "unknown"),
+                    Evidence.Of("Signature", driver.Signature!.Status.ToString(), "Authenticode"),
+                    Evidence.Of("Signer", driver.Signature.SignerName ?? "none"),
                 ],
             });
+
+    /// <summary>
+    /// True only when the image was verified and the answer was bad.
+    /// <para>
+    /// Both exclusions are the same rule, and it is the one this project keeps relearning: a
+    /// question that was never asked is not an answer. <c>null</c> means signature
+    /// verification was switched off for the scan, and <see cref="SignatureStatus.Unknown"/>
+    /// means the file could not be read. Treating either as "not signed" is a limitation
+    /// reported as an observation, and here it would accuse the crash-dump stack of being
+    /// a rootkit on every machine Windows ships.
+    /// </para>
+    /// </summary>
+    private static bool FailsVerification(SignatureInfo? signature) =>
+        signature is not null
+        && signature.Status is not (SignatureStatus.Valid or SignatureStatus.Unknown);
 }

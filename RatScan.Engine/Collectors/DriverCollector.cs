@@ -87,6 +87,7 @@ public sealed class DriverCollector : IDriverCollector
         if (verifySignatures)
         {
             VerifySignatures(byName, cancellationToken);
+            DiscloseUnverifiable(byName, blindspots);
         }
 
         return new DriverCensusResult
@@ -196,6 +197,48 @@ public sealed class DriverCollector : IDriverCollector
                 };
             }
         }
+    }
+
+    /// <summary>
+    /// Names the loaded-but-unregistered modules whose images could not be verified.
+    /// <para>
+    /// The detector deliberately does not report these: <see cref="SignatureStatus.Unknown"/>
+    /// means the file could not be read, not that it is unsigned, and on a healthy machine
+    /// the set is Windows' own crash-dump stack — <c>dump_stornvme.sys</c> and friends are
+    /// in-memory copies of registered storage drivers whose files never exist on disk.
+    /// </para>
+    /// <para>
+    /// Not reporting them is not the same as saying nothing about them. This is exactly the
+    /// shape a manually mapped driver would also take, so the count is disclosed where the
+    /// product puts everything it could not establish, rather than being dropped between a
+    /// collector and a rule.
+    /// </para>
+    /// </summary>
+    private static void DiscloseUnverifiable(
+        Dictionary<string, DriverEntry> byName, List<Blindspot> blindspots)
+    {
+        var unverifiable = byName.Values
+            .Where(d => d.LoadedWithoutRegistration
+                        && d.Signature?.Status == SignatureStatus.Unknown)
+            .Select(d => d.Name)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (unverifiable.Count == 0)
+        {
+            return;
+        }
+
+        blindspots.Add(new Blindspot
+        {
+            Area = "Unverifiable loaded kernel modules",
+            Reason = $"{unverifiable.Count} module{(unverifiable.Count == 1 ? " is" : "s are")} "
+                     + "loaded with no service registration and could not be checked against a "
+                     + "signature, because the image is not present on disk: "
+                     + $"{string.Join(", ", unverifiable)}. Windows' crash-dump stack has this "
+                     + "shape by design, and so would a driver mapped straight into memory, so "
+                     + "these are named rather than judged either way.",
+        });
     }
 
     private static void VerifySignatures(Dictionary<string, DriverEntry> byName, CancellationToken cancellationToken)
