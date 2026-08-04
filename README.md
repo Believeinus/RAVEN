@@ -1,147 +1,255 @@
 <div align="center">
 
-# RAVEN
+<img src="assets/raven-banner.png" alt="RAVEN — Remote Access &amp; Visibility Examination Node" width="820">
 
-**Remote Access & Visibility Examination Node**
+<br>
 
-**Find out what's watching you.**
-
-A Windows remote-access and RAT detection tool that tells you the truth about its own blind spots.
-
-![status](https://img.shields.io/badge/status-in%20development-orange)
-![license](https://img.shields.io/badge/license-MIT-green)
-![platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4)
-![dotnet](https://img.shields.io/badge/.NET-8.0-512BD4)
-![ui](https://img.shields.io/badge/UI-WPF-blue)
+[![Platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4?style=flat-square)](https://github.com/Believeinus/RAVEN)
+[![Language](https://img.shields.io/badge/C%23-.NET%208-512BD4?style=flat-square)](https://github.com/Believeinus/RAVEN)
+[![UI](https://img.shields.io/badge/UI-WPF%20%C2%B7%20Fluent-6A5ACD?style=flat-square)](https://github.com/Believeinus/RAVEN)
+[![Runs](https://img.shields.io/badge/runs-fully%20offline-2E7D32?style=flat-square)](#-privacy)
+[![Status](https://img.shields.io/badge/status-in%20development-E8873A?style=flat-square)](#-status)
 
 </div>
 
 ---
 
-> [!WARNING]
-> **In active development — phases 0–10 of 11 complete.** The scanner runs, detects,
-> explains and can shut down what it finds; scan history, the allowlist, the diff between
-> scans and the live ETW watcher are all wired into the UI, and the watcher has been driven
-> elevated and observed tracing. Still outstanding: **code signing** (the published binary is
-> unsigned, so SmartScreen warns on first run), the ten end-to-end verification steps, and
-> two cross-view rules that are collected but not yet judged. See `docs/` for the honest
-> per-phase state.
-
-## What it does
-
-RAVEN finds — and can shut down — anything on a Windows 11 machine that gives a remote
-party the ability to **see your screen, control your input, or reach your files**:
-commercial remote-access products, abused RMM agents, built-in Windows remote surfaces
-left enabled, and purpose-built RATs.
-
-It runs a deep on-demand scan and a continuous ETW-backed watch, explains every
-finding with its evidence chain, and offers remediation you have to confirm.
-
-## The honest part
+RAVEN looks for remote-access software, RATs, and screen or input surveillance running on
+your machine — and then helps you stop it. It runs entirely on the local machine. There is
+no server, no account, and nothing leaves the computer.
 
 > [!IMPORTANT]
-> **RAVEN will never tell you "you are clean."**
+> RAVEN is in active development and has not been released. The published executable is
+> currently unsigned, so SmartScreen will warn on first run.
 
-No user-mode program can prove a machine is unmonitored. Anything running in the
-kernel (a malicious or vulnerable signed driver), below it (a thin hypervisor), or
-beside it (IPMI/BMC, a hardware KVM-over-IP dongle, a capture device inline with your
-monitor) can answer every API this tool calls with clean lies, or bypass the operating
-system entirely. A scanner that renders a green checkmark is at its least trustworthy
-exactly when it matters most.
+---
 
-So RAVEN is built to a different goal: **make it very hard for anything to hide, and
-make the remaining blind spots visible and named.** Three things follow from that:
+## 🧭 The constraint that shapes everything
 
-| Commitment | What it means |
+The original goal was *"iron proof — if this tool says nothing is spying on me, nothing
+is."*
+
+**That bar is unreachable, and pretending otherwise is the most dangerous thing a tool like
+this can do.** A kernel rootkit, a hypervisor beneath Windows, or a hardware KVM-over-IP all
+defeat any user-mode scanner. So RAVEN took a different commitment instead:
+
+> Make it very hard for anything to hide, and make the residual blind spots **visible and
+> named**.
+
+Three things follow from that, and they are not adjustable:
+
+| | |
 |---|---|
-| **Cross-view detection** | Processes are enumerated from **four independent kernel interfaces** and diffed; kernel drivers from **three** — the loaded-module list, the Services registry, and the `\Driver` object directory. Something that unhooks one API but not the others produces a discrepancy, and the discrepancy is itself the finding. This is how you catch active concealment rather than mere unfamiliarity. Two limits stated plainly: the `\Driver` view is collected and disclosed but **not yet judged**, and TCP connections still come from a single interface. |
-| **Scan Integrity panel** | Every scan reports the conditions it ran under — Administrator rights, Secure Boot, memory integrity (HVCI), driver signature enforcement, test-signing mode, kernel debug mode, and kernel debugger presence — and the verdict is explicitly qualified by them. |
-| **Coverage-qualified verdicts** | The headline is never "clean." It reads *"No evidence of remote access found — across N surfaces, with these M blind spots,"* and every blind spot is listed by name underneath, with the reason it could not be examined and the remedy where one exists. `VerdictLevel` has no `Clean` member by construction, and a test asserts the output never claims safety. |
+| **It never says you are clean** | The verdict type has no `Clean` value *by construction*, and a test asserts the output never claims safety. Every verdict is qualified by what the scan could actually see. |
+| **A discrepancy is the finding** | Processes and drivers are enumerated through several independent kernel interfaces and the results are diffed. Something visible to one interface and hidden from another *is* the result. |
+| **Missing data is never a finding** | A privilege limit degrades coverage and adds a named blind spot. It never manufactures a detection — nearly every false positive this project has produced came from breaking that rule. |
 
-## Detection coverage
+Every scan ends with a **Scan Integrity** panel and an explicit *"what this scan could not
+see"* list. Those are not footnotes; they are the product.
 
-- **Known remote-access software** — 56 catalogued products (AnyDesk, TeamViewer, RustDesk, ScreenConnect, NetSupport, Remote Utilities, the VNC family, RMM agents…), matched on process, service, driver, path, signer, and registry footprint. Portable/uninstalled instances are scored *higher* — that's the support-scam signature.
-- **Windows' own remote surfaces** — RDP (including the `Shadow` policy, which permits silent session watching), WinRM, PS Remoting, OpenSSH, Remote Registry, Remote Assistance, Quick Assist, SMB sessions, `netsh portproxy`, inbound firewall rules.
-- **Screen & input surveillance** — capture-capable module correlation, virtual/indirect display drivers, injected-hook footprints, UIAccess tokens, virtual HID drivers.
-- **Persistence (ASEP)** — 14 surfaces: Run/RunOnce across both registry views, startup folders, scheduled tasks, **WMI permanent event subscriptions**, Winlogon Shell/Userinit, `AppInit_DLLs`, `AppCertDlls`, IFEO debuggers, COM hijacks, LSA packages, print monitors, netsh helpers.
-- **Trust analysis** — Authenticode verification on every running image, including the catalog path (42 of 60 sampled System32 binaries are catalog-signed, so skipping it would misreport all 42 as unsigned).
-- **Guided remediation** — end a process and its children, stop and disable a service, remove an auto-start entry, turn off a Windows remote feature. Every action shows the exact command first and runs only on explicit confirmation.
-- **Live watch** — real-time ETW over kernel process, image-load and TCP events, in its own view, alerting once per catalogued tool rather than once per process start. Needs Administrator; without it the view says so and refuses rather than appearing to watch. Process and network events are retained separately from image loads, so a flood of DLL loads cannot push the beacon you care about out of the buffer.
+---
 
-## In the app
+## 🖥️ What it looks like
 
-Four views on a Fluent shell, sharing one scan session:
+<div align="center">
+<img src="assets/screenshot-scan.png" alt="RAVEN Scan view" width="880">
+<br><em>The Scan view. Coverage is stated before any result is.</em>
+<br><br>
+<img src="assets/screenshot-live-watch.png" alt="RAVEN Live watch view" width="880">
+<br><em>Live watch — a scan samples one moment; this sees what happens between them.</em>
+</div>
 
-- **Scan** — the verdict and its coverage line, every finding with its evidence chain, what
-  the scan could not see, what changed since the last scan, and the allowlist in full.
-- **Live watch** — the ETW feed described above, with its own start control.
-- **History** — every recorded scan, newest first, each stating whether it ran elevated,
-  because two scans taken at different coverage are not two readings of the same thing.
-- **Settings** — what coverage you currently have and what it costs, the allowlist in
-  summary, where the data lives, and what the tool does not claim.
+---
 
-Plus:
+## 🔍 What it examines
 
-- **Diff between scans** — what appeared and what disappeared, with a caveat line when the
-  two scans are not comparable. A finding that vanished because this scan saw *less* is not
-  reported as good news.
-- **Allowlist ("this is mine")** — muting requires a written reason and pins the SHA-256 of
-  the file it excuses, so replacing that file brings the finding straight back. Muted items
-  stay listed with your reason, and the scan says when muting changed its own verdict.
-- **Export** — HTML to read or JSON to process, after a prompt that says what the file will
-  contain about your machine.
-- **Tray** — closing the window ends RAVEN unless a watch is running, in which case it hides
-  to the tray and says so. Deliberately no start-with-Windows: giving RAVEN its own
-  auto-start entry would make it an instance of the thing it reports.
+| Surface | What RAVEN reads |
+|---|---|
+| **Processes** | Every running process and its trust status — Authenticode including **catalog** signatures, since most of Windows is catalog-signed and an embedded-only check would call half the OS unsigned |
+| **Network** | TCP/UDP listeners and connections, attributed to the owning process |
+| **Windows' own remote access** | RDP, RDP shadowing, WinRM, OpenSSH, Remote Registry, Remote Assistance, SMB, and `netsh portproxy` forwarding |
+| **Persistence** | 14 auto-start surfaces — Run/RunOnce, startup folders, scheduled tasks, services, Winlogon, AppInit_DLLs and AppCertDlls, IFEO debuggers, COM hijacks, LSA packages, print monitors, netsh helpers, Active Setup, PowerShell profiles, WMI event subscriptions. Every path is resolved before it is verified, so `%windir%\…`, a bare `explorer.exe` and a Startup shortcut are all checked against the real file rather than reported as missing |
+| **Kernel drivers** | The loaded-module list, registry registrations, and the `\Driver` object directory — three views that can disagree |
+| **Surveillance** | Screen-capture correlation and the structural footprint of a global input hook |
 
-## Requirements
+---
 
-- Windows 11 x64 (developed against Home Single Language, build 26200)
-- .NET 8 desktop runtime (or use the self-contained build)
-- **Administrator** for full coverage. It runs without it — and says exactly what it couldn't see.
+## ✨ What else it does
 
-## Build
+- **Identifies known tools** from a catalogue of remote-access and RAT-family software —
+  used as evidence *for* an identification, never as grounds to convict. A stale catalogue
+  lowers confidence rather than raising severity.
+- **Stops things, with your hand on it.** No remediation runs without a confirmation showing
+  the exact command and its impact.
+- **An allowlist that cannot quietly lie.** Every entry is pinned to the SHA-256 of the file
+  it excuses, so swapping that file brings the finding straight back. Muted items stay listed
+  on the same screen as everything else.
+- **Remembers, and compares.** Each scan is recorded and diffed against the previous one —
+  and a finding that disappeared is never reported as good news if this scan simply saw less.
+- **Exports** to HTML or JSON, stating what the file contains before writing it.
+- **Watches between scans** with real-time ETW tracing, for software that starts, beacons and
+  exits before any scan would notice. Process and network events are retained separately from
+  image loads, because a busy machine produces DLL loads at roughly forty to one and they
+  would otherwise push the beacon you care about out of the buffer.
+
+---
+
+## ⬇️ Install
+
+RAVEN does not install anything. There is no installer, no service, and no registry
+footprint — it is a folder you unzip and an executable you run, and deleting the folder
+removes it.
+
+1. Download `RAVEN-win-x64.zip` from [Releases](../../releases).
+2. **Unzip the whole folder** and keep it together. `RAVEN.exe` needs the files beside it —
+   in particular `amd64\KernelTraceControl.dll`, without which the live watch cannot start a
+   kernel trace. Copying the `.exe` out on its own is the one way to break it.
+3. Run `RAVEN.exe`.
+
+> [!WARNING]
+> **SmartScreen will warn on first run, and some anti-malware may object.** The executable is
+> not code-signed yet. It also does exactly what heuristics are built to notice: enumerates
+> every process through four kernel interfaces, reads the kernel driver list, and opens an ETW
+> kernel session. If you would rather not trust a binary from the internet — reasonable, for a
+> tool like this — build it yourself from source, below.
+
+The only thing RAVEN writes outside its own folder is `%LOCALAPPDATA%\RatScan\ratscan.db`,
+which holds your scan history, allowlist and baselines. Delete that folder to reset it
+completely. (The directory keeps the project's old name on purpose: renaming it would strand
+existing history behind a fresh-looking install.)
+
+## ▶️ Running it
+
+- **Accept the elevation prompt** for full coverage. Declining is supported and RAVEN keeps
+  working — it just says, in a banner and on every scan, what it can no longer see.
+- Press **Run full scan**. It takes a few seconds and ends with a verdict that states its own
+  coverage.
+- **Live watch** needs Administrator and refuses clearly without it, rather than appearing to
+  watch while seeing nothing.
+- Closing the window quits RAVEN — unless a watch is running, in which case it goes to the
+  tray and tells you so once.
+- `RAVEN.exe --no-elevate` skips the elevation request. That is a supported switch, not a
+  workaround: it is how the reduced-coverage path is exercised, and how any automated run has
+  to start, since UAC lives on the secure desktop.
+
+### Build from source
 
 ```powershell
+git clone https://github.com/Believeinus/RAVEN.git
+cd RAVEN
 dotnet build RatScan.sln
 dotnet test
-dotnet publish RatScan.UI -c Release -r win-x64 --self-contained /p:PublishSingleFile=true
+dotnet run --project RatScan.UI
 ```
 
-## Privacy
+Needs the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). To produce the same
+self-contained build that ships in the release:
 
-**Offline. Not "offline by default" — there is no network client in the product at all.**
-No telemetry, no update check, no reputation lookup: nothing about your machine leaves it,
-because nothing in the code can send it.
+```powershell
+dotnet publish RatScan.UI -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -o release
+```
 
-What does hold your data is local. `%LOCALAPPDATA%\RatScan\ratscan.db` stores scan history,
-the allowlist and baselines — process paths, listening ports, usernames — and is gitignored.
-Exported reports contain the same detail, which is why the export prompt says so before it
-writes. Treat both as a description of your computer, because that is what they are.
+The project files, namespaces and solution still say `RatScan`, the name this started under.
+That is deliberate — renaming them is a one-way refactor with no benefit to anyone using it.
 
-## Planned
+---
 
-- **Code signing**, so the published binary stops tripping SmartScreen.
-- **VirusTotal enrichment** — opt-in, off by default, using your own API key, with the UI
-  announcing each hash at the moment it is about to leave the machine. It is not built yet,
-  and the offline guarantee above holds until it is: the day that changes, this README and
-  the app will both say so before anything is sent.
-- **Two cross-view rules** that are collected but not yet judged — the `\Driver` object
-  directory against the loaded-module list, and a second independent source for TCP
-  connections via ETW.
-- Signature rules for the driver census beyond the unregistered-driver case.
+## 🛡️ Requirements
 
-## Documentation
+- Windows 11, x64
+- **Administrator is requested at launch.** Without it, kernel driver identities, the
+  `\Driver` object directory, the Security event log, SMB session data and the live watch are
+  all out of reach.
 
-See [`docs/`](docs/) — changelog, build log, and the phase checkpoint.
+> [!NOTE]
+> Declining the prompt is fully supported. RAVEN keeps running with reduced coverage and says
+> so, in a banner and on every scan. Elevation is *requested*, never demanded by the manifest
+> — a tool that cannot demonstrate its own blind spots has no business claiming it has none.
 
-## License
+---
 
-[MIT](LICENSE). Use it, fork it, ship it — with the warranty disclaimer meant literally:
-this is a detection tool with named blind spots, and it can be wrong in both directions.
+## 🔒 Privacy
 
-The published binary is **not code-signed**, so Windows SmartScreen warns on first run and
-some anti-malware products may quarantine it. That is the expected reaction to an unsigned
-executable that enumerates processes across four kernel interfaces, reads the driver list
-and opens an ETW kernel session — the same behaviours the tool exists to look for. Build it
-yourself if you would rather not trust a binary.
+Everything stays on the machine. There is no server, no account, and no telemetry — and not
+as a default you could flip: **there is no network client anywhere in the product.** Nothing
+about your computer can leave it, because nothing in the code can send it.
+
+Scan history, the allowlist and baselines live in a local SQLite database. That database
+records what is running on your computer — program paths, connections and usernames — so it
+is worth treating like any other record of your machine. Exported reports contain the same
+kind of detail, and RAVEN tells you that *before* it writes one.
+
+---
+
+<details>
+<summary><strong>Why does it refuse to tell me I'm clean?</strong></summary>
+
+<br>
+
+Because it cannot know. RAVEN runs in user mode. Code running in the Windows kernel, in a
+hypervisor beneath Windows, or in hardware attached to the machine can return clean answers
+to every check it performs.
+
+A tool that says "you're clean" is making a claim about things it did not look at. RAVEN
+reports what it examined and what it could not — which is less comforting and considerably
+more useful.
+
+</details>
+
+<details>
+<summary><strong>It flagged software I installed myself. Is that a bug?</strong></summary>
+
+<br>
+
+No. Remote-access software is not malware, and RAVEN does not pretend to know whose machine
+it is on. TeamViewer, RustDesk, VNC and their relatives are flagged because they *can* be
+used against you, not because they are.
+
+The question RAVEN is built to answer is the one only you can: *did you set this up?* If yes,
+mute it — the entry is pinned to that exact file, so a swapped binary comes straight back.
+
+</details>
+
+<details>
+<summary><strong>Why does an unelevated scan find fewer things?</strong></summary>
+
+<br>
+
+Because it can see less, and that is reported rather than hidden. Windows withholds kernel
+image bases below high integrity, refuses the `\Driver` object directory, and closes the
+Security event log.
+
+RAVEN never treats "I could not look" as "there was nothing there". Those gaps are listed
+individually on every scan, and a comparison against an elevated scan carries a caveat saying
+the two are not equivalent.
+
+</details>
+
+---
+
+## 🚧 Status
+
+In active development. Phases 0–10 of 11 are complete: it scans, watches, stops things,
+remembers and compares. The first pre-release build is published, and the executable is
+**unsigned** — SmartScreen will warn on first run and code signing is unresolved.
+
+Known and openly outstanding:
+
+- **Code signing**, which is the only thing standing between this and a comfortable download.
+- **Two cross-view rules that are collected but not yet judged** — the `\Driver` object
+  directory against the loaded-module list, and a second independent source for network
+  connections. Both are disclosed in the app rather than quietly missing.
+- **VirusTotal enrichment**, planned and not built. When it arrives it will be opt-in, off by
+  default, use your own API key, and announce each hash in the UI at the moment it is about to
+  leave the machine — and the offline guarantee above will change in the same commit.
+- The plan's ten end-to-end verification steps.
+
+## 📄 License
+
+[MIT](LICENSE) — use it, fork it, ship it. The warranty disclaimer is meant literally: this
+is a detection tool with named blind spots, and it can be wrong in both directions.
+
+<div align="center">
+<br>
+<sub>Built by <a href="https://github.com/Believeinus">Believeinus</a></sub>
+</div>
