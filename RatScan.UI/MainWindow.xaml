@@ -80,6 +80,19 @@
         </ui:NavigationView>
 
         <!--
+            Every confirmation in the app is shown here, over all three rows and above the
+            navigation, so a prompt cannot be mistaken for part of the view behind it.
+
+            One host per window is the framework's rule, and one host is also the product's:
+            confirmation before a mutating action is an invariant here, so the thing that
+            renders it belongs to the shell rather than to whichever page happens to ask.
+            Siblings are disabled while a dialog is up - a prompt the user can click behind
+            is not a guard.
+        -->
+        <ui:ContentDialogHost Grid.RowSpan="3" x:Name="RootDialogHost"
+                              IsDisableSiblingsEnabled="True" />
+
+        <!--
             Tray presence, and the only reason this window may outlive its own Close.
 
             Deliberately absent: any form of start-with-Windows. RAVEN reports other software

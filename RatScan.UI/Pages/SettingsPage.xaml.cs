@@ -87,16 +87,17 @@ public partial class SettingsPage : Page
     /// see. Declining the UAC prompt is a normal outcome, not an error.
     /// </para>
     /// </summary>
-    private void OnElevateClick(object sender, RoutedEventArgs e)
+    private async void OnElevateClick(object sender, RoutedEventArgs e)
     {
         var exe = Environment.ProcessPath;
 
         if (exe is null)
         {
-            MessageBox.Show(
-                Owner!,
-                "RAVEN could not determine its own executable path, so it cannot restart itself.",
-                "Cannot restart", MessageBoxButton.OK, MessageBoxImage.Error);
+            await RavenDialog.TellAsync(
+                this,
+                "Cannot restart",
+                "RAVEN could not determine its own executable path, so it cannot restart itself.")
+                .ConfigureAwait(true);
 
             return;
         }

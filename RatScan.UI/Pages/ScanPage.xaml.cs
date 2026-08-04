@@ -143,7 +143,7 @@ public partial class ScanPage : Page
     /// where to put it, not afterwards.
     /// </para>
     /// </summary>
-    private void OnExportClick(object sender, RoutedEventArgs e)
+    private async void OnExportClick(object sender, RoutedEventArgs e)
     {
         if (_session.LastResult is not { } last)
         {
@@ -170,19 +170,17 @@ public partial class ScanPage : Page
             ? ExportFormat.Json
             : ExportFormat.Html;
 
-        var confirm = MessageBox.Show(
-            Owner!,
+        var confirmed = await RavenDialog.ConfirmAsync(
+            this,
+            "Export this scan",
             "This file will describe what is running on this machine — program paths, "
             + "listening ports, file hashes and your allowlist notes.\n\n"
             + "It also records what the scan could not see, so it cannot be read as a "
             + "clean bill of health.\n\n"
             + $"Write it to:\n{dialog.FileName}",
-            "Export this scan",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Information,
-            MessageBoxResult.OK);
+            "Write the report").ConfigureAwait(true);
 
-        if (confirm != MessageBoxResult.OK)
+        if (!confirmed)
         {
             return;
         }
@@ -194,17 +192,16 @@ public partial class ScanPage : Page
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                Owner!,
-                $"The report was not written.\n\n{ex.GetType().Name}: {ex.Message}",
-                "Export failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            await RavenDialog.TellAsync(
+                this,
+                "Export failed",
+                $"The report was not written.\n\n{ex.GetType().Name}: {ex.Message}").ConfigureAwait(true);
 
             return;
         }
 
-        MessageBox.Show(
-            Owner!, $"Written to:\n{dialog.FileName}",
-            "Exported", MessageBoxButton.OK, MessageBoxImage.Information);
+        await RavenDialog.TellAsync(
+            this, "Exported", $"Written to:\n{dialog.FileName}").ConfigureAwait(true);
     }
 
     private ScanRecord? TryLatestScan()
@@ -323,7 +320,7 @@ public partial class ScanPage : Page
     /// runs. The dialog is not a formality: RAVEN can be wrong, and the person at the
     /// keyboard is the one who knows whether a program is theirs.
     /// </summary>
-    private void OnFixClick(object sender, RoutedEventArgs e)
+    private async void OnFixClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: RemediationAction action })
         {
@@ -340,26 +337,32 @@ public partial class ScanPage : Page
             + $"This will run:\n{action.PreviewCommand}\n\n"
             + $"Risk: {Palette.RiskText(action.Risk)}"
             + (action.Caveat is null ? string.Empty : $"\n\nNote: {action.Caveat}")
-            + elevationWarning
-            + "\n\nGo ahead?";
+            + elevationWarning;
 
-        var answer = MessageBox.Show(
-            Owner!, prompt, action.Title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
-            MessageBoxResult.No);
+        // The button says what will happen rather than "Yes", and it is red for anything
+        // the user cannot simply undo — the two risks that are not Reversible are exactly
+        // the ones where a misread prompt costs something.
+        var confirmed = await RavenDialog.ConfirmAsync(
+            this,
+            action.Title,
+            prompt,
+            action.Title,
+            action.Risk == RemediationRisk.Reversible
+                ? Wpf.Ui.Controls.ControlAppearance.Primary
+                : Wpf.Ui.Controls.ControlAppearance.Danger).ConfigureAwait(true);
 
-        if (answer != MessageBoxResult.Yes)
+        if (!confirmed)
         {
             return;
         }
 
         var outcome = _session.Remediation.Execute(action, confirmed: true);
 
-        MessageBox.Show(
-            Owner!,
-            outcome.Message + (outcome.Detail is null ? string.Empty : $"\n\n{outcome.Detail}"),
+        await RavenDialog.TellAsync(
+            this,
             outcome.Succeeded ? "Done" : "Did not complete",
-            MessageBoxButton.OK,
-            outcome.Succeeded ? MessageBoxImage.Information : MessageBoxImage.Error);
+            outcome.Message + (outcome.Detail is null ? string.Empty : $"\n\n{outcome.Detail}"))
+            .ConfigureAwait(true);
 
         if (outcome.Succeeded)
         {
@@ -374,16 +377,15 @@ public partial class ScanPage : Page
     /// same shape as remediation: state plainly what it will do, require a reason, and
     /// change nothing until the user commits.
     /// </summary>
-    private void OnMuteClick(object sender, RoutedEventArgs e)
+    private async void OnMuteClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: Finding finding }
-            || _session.Allowlist is not { } allowlist
-            || Owner is not { } owner)
+            || _session.Allowlist is not { } allowlist)
         {
             return;
         }
 
-        var entry = MuteDialog.Ask(owner, finding);
+        var entry = await MuteDialog.AskAsync(this, finding).ConfigureAwait(true);
         if (entry is null)
         {
             return;
@@ -395,10 +397,11 @@ public partial class ScanPage : Page
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                owner,
-                $"The entry was not saved: {ex.Message}\n\nNothing has been muted.",
-                "Could not save", MessageBoxButton.OK, MessageBoxImage.Error);
+            await RavenDialog.TellAsync(
+                this,
+                "Could not save",
+                $"The entry was not saved: {ex.Message}\n\nNothing has been muted.")
+                .ConfigureAwait(true);
 
             return;
         }
