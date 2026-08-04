@@ -21,8 +21,6 @@ public partial class LiveWatchPage : Page
     /// <summary>How many process/network events the feed shows at once.</summary>
     private const int FeedLength = 120;
 
-    /// <summary>Mirrors <c>LiveWatcher</c>'s ring size, for the disclosure line only.</summary>
-    private const int RingCapacityForDisplay = 5000;
 
     public LiveWatchPage(RavenSession session)
     {
@@ -143,11 +141,19 @@ public partial class LiveWatchPage : Page
 
         var hidden = events.Count - events.Count(Interesting);
         var elapsed = DateTime.UtcNow - _watchStartedUtc;
+        var dropped = _session.Watcher.DiscardedSignalEvents;
 
+        // What was discarded is stated rather than implied. The buffer used to fill in about
+        // ten minutes and quietly drop the oldest events, which in a watcher reads as "nothing
+        // happened then" — the one thing this product must never say by omission.
         WatchCounts.Text =
             $"{events.Count} events in {elapsed.TotalMinutes:F0} min · showing the last "
             + $"{shown.Count} process and network events · {hidden} image loads not shown · "
-            + $"buffer holds the most recent {RingCapacityForDisplay}";
+            + $"buffer holds the most recent {LiveWatcher.SignalBufferCapacity} process and "
+            + $"network events and {LiveWatcher.ImageLoadBufferCapacity} image loads"
+            + (dropped == 0
+                ? string.Empty
+                : $" · {dropped} older process and network events have been discarded");
     }
 
     private static bool Interesting(LiveEvent observed) =>

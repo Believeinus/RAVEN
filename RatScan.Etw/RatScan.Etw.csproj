@@ -19,4 +19,14 @@
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The retention buffers are only reachable from the ETW pump, which needs Administrator
+      and a live kernel session, so their behaviour under a flood could not be asserted at
+      all from outside. That is how a buffer came to discard the events that matter for
+      months without a test noticing.
+    -->
+    <InternalsVisibleTo Include="RatScan.Tests" />
+  </ItemGroup>
+
 </Project>

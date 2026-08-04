@@ -117,4 +117,77 @@ public sealed class LiveWatcherTests(ITestOutputHelper output)
         Assert.False(watcher.IsRunning);
         Assert.Empty(watcher.RecentEvents);
     }
+
+    /// <summary>
+    /// The regression this splits the buffers to prevent. Measured on an idle machine on
+    /// 2026-08-04: ten minutes of watching produced 5,000 events, 4,885 of them image loads,
+    /// against a single shared 5,000-event ring — so the ring was full and dropping, and what
+    /// it dropped was the process starts and connections, at roughly 42 image loads to one.
+    /// A watcher that forgets the beacon it saw is not watching.
+    /// </summary>
+    [Fact]
+    public void A_flood_of_image_loads_cannot_push_out_process_and_network_events()
+    {
+        using var watcher = new LiveWatcher();
+
+        watcher.Publish(Started("rat.exe", 4242));
+
+        for (var i = 0; i < 20_000; i++)
+        {
+            watcher.Publish(new LiveEvent
+            {
+                TimeUtc = DateTime.UtcNow,
+                Kind = LiveEventKind.ImageLoaded,
+                Pid = 9000,
+                Subject = $@"C:\WINDOWS\System32\noise{i}.dll",
+            });
+        }
+
+        var kept = watcher.RecentEvents;
+        var processStarts = kept.Where(e => e.Kind == LiveEventKind.ProcessStarted).ToList();
+
+        output.WriteLine(
+            $"kept={kept.Count} processStarts={processStarts.Count} "
+            + $"imageLoads={kept.Count(e => e.Kind == LiveEventKind.ImageLoaded)} "
+            + $"discardedSignal={watcher.DiscardedSignalEvents} "
+            + $"discardedImages={watcher.DiscardedImageLoads}");
+
+        // The one event worth having survives twenty thousand it is competing with.
+        var survivor = Assert.Single(processStarts);
+        Assert.Equal(4242u, survivor.Pid);
+        Assert.Equal(0, watcher.DiscardedSignalEvents);
+
+        // Image loads are still bounded, and what was dropped is counted rather than
+        // disappearing quietly.
+        Assert.Equal(LiveWatcher.ImageLoadBufferCapacity, kept.Count(e => e.Kind == LiveEventKind.ImageLoaded));
+        Assert.Equal(20_000 - LiveWatcher.ImageLoadBufferCapacity, watcher.DiscardedImageLoads);
+    }
+
+    private static LiveEvent Started(string processName, uint pid) => new()
+    {
+        TimeUtc = DateTime.UtcNow,
+        Kind = LiveEventKind.ProcessStarted,
+        Pid = pid,
+        ProcessName = processName,
+        Subject = $@"C:\Temp\{processName}",
+    };
+
+    [Fact]
+    public void Discarded_process_and_network_events_are_counted()
+    {
+        using var watcher = new LiveWatcher();
+
+        var overflow = LiveWatcher.SignalBufferCapacity + 250;
+        for (var i = 0; i < overflow; i++)
+        {
+            watcher.Publish(Started($"p{i}.exe", (uint)i));
+        }
+
+        output.WriteLine(
+            $"published={overflow} kept={watcher.RecentEvents.Count} "
+            + $"discarded={watcher.DiscardedSignalEvents}");
+
+        Assert.Equal(LiveWatcher.SignalBufferCapacity, watcher.RecentEvents.Count);
+        Assert.Equal(250, watcher.DiscardedSignalEvents);
+    }
 }

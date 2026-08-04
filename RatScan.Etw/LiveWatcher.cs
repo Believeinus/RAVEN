@@ -33,12 +33,36 @@ public sealed class LiveWatcher : IDisposable
 {
     private const string SessionName = "RatScanLiveWatch";
 
-    /// <summary>Bounded so a busy machine cannot grow the history without limit.</summary>
-    private const int RingCapacity = 5000;
+    /// <summary>
+    /// Process and network events — the ones a beacon shows up in.
+    /// <para>
+    /// These used to share a single 5,000-event ring with image loads, which is not a budget
+    /// at all: measured on an idle machine on 2026-08-04, ten minutes produced 5,000 events
+    /// of which 4,885 were image loads. The ring was full and discarding, at a ratio of about
+    /// 42 image loads to every event worth reading, so the watcher forgot a process start
+    /// from eleven minutes ago while faithfully remembering a DLL load from ten. A watcher
+    /// that silently forgets what it saw is the failure this component exists to refuse.
+    /// </para>
+    /// <para>
+    /// At the measured signal rate — 115 events in ten minutes — this holds around seven
+    /// hours instead of ten minutes.
+    /// </para>
+    /// </summary>
+    private const int SignalCapacity = 5000;
+
+    /// <summary>
+    /// Image loads, kept separately and deliberately short. They are context for a finding
+    /// rather than the finding, and they arrive in the thousands.
+    /// </summary>
+    private const int ImageLoadCapacity = 1000;
 
     private readonly ILiveAlertRules _rules;
-    private readonly ConcurrentQueue<LiveEvent> _ring = new();
+    private readonly ConcurrentQueue<LiveEvent> _signal = new();
+    private readonly ConcurrentQueue<LiveEvent> _imageLoads = new();
     private readonly ConcurrentDictionary<uint, string> _processNames = new();
+
+    private long _signalDiscarded;
+    private long _imageLoadsDiscarded;
 
     private TraceEventSession? _session;
     private Thread? _pump;
@@ -54,7 +78,20 @@ public sealed class LiveWatcher : IDisposable
 
     public bool IsRunning => _running;
 
-    public IReadOnlyList<LiveEvent> RecentEvents => _ring.ToArray();
+    public IReadOnlyList<LiveEvent> RecentEvents =>
+        _signal.Concat(_imageLoads).OrderBy(e => e.TimeUtc).ToArray();
+
+    /// <summary>
+    /// How much has been dropped off the back of each buffer. Exposed so the view can say so:
+    /// the whole point of splitting the budgets was that discarding was happening silently.
+    /// </summary>
+    public long DiscardedSignalEvents => Interlocked.Read(ref _signalDiscarded);
+
+    public long DiscardedImageLoads => Interlocked.Read(ref _imageLoadsDiscarded);
+
+    public static int SignalBufferCapacity => SignalCapacity;
+
+    public static int ImageLoadBufferCapacity => ImageLoadCapacity;
 
     public static bool IsElevated()
     {
@@ -200,11 +237,23 @@ public sealed class LiveWatcher : IDisposable
 
     private string? NameOf(uint pid) => _processNames.GetValueOrDefault(pid);
 
-    private void Publish(LiveEvent observed)
+    /// <summary>
+    /// Records one observation, bounds the buffers and lets the rules look at it.
+    /// <para>
+    /// Internal rather than private only so the retention behaviour can be tested: in
+    /// production the ETW pump thread is the sole caller, and reaching it needs
+    /// Administrator and a live kernel session.
+    /// </para>
+    /// </summary>
+    internal void Publish(LiveEvent observed)
     {
-        _ring.Enqueue(observed);
-        while (_ring.Count > RingCapacity && _ring.TryDequeue(out _))
+        if (observed.Kind == LiveEventKind.ImageLoaded)
         {
+            Retain(_imageLoads, ImageLoadCapacity, ref _imageLoadsDiscarded, observed);
+        }
+        else
+        {
+            Retain(_signal, SignalCapacity, ref _signalDiscarded, observed);
         }
 
         Observed?.Invoke(observed);
@@ -222,6 +271,20 @@ public sealed class LiveWatcher : IDisposable
         catch
         {
             // Deliberately swallowed; see above.
+        }
+    }
+
+    /// <summary>
+    /// Bounds one buffer and counts what falls off, rather than dropping it quietly.
+    /// </summary>
+    private static void Retain(
+        ConcurrentQueue<LiveEvent> ring, int capacity, ref long discarded, LiveEvent observed)
+    {
+        ring.Enqueue(observed);
+
+        while (ring.Count > capacity && ring.TryDequeue(out _))
+        {
+            Interlocked.Increment(ref discarded);
         }
     }
 
