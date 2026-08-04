@@ -10,6 +10,21 @@ All notable changes to RatScan are recorded here. Format follows
 
 ### Security
 
+- **The published executable carried the developer's home directory, five times over.**
+  Every assembly writes a CodeView (RSDS) debug record naming its `.pdb` by absolute path,
+  so `RAVEN.exe` contained `C:\Users\<name>\…` — full path and personal name — baked into the
+  binary. Excluding the `.pdb` files from the distribution zip did nothing about it, because
+  the strings live in the executable itself. Release builds now emit no symbols at all and
+  set `PathMap`, and the rebuilt binary contains zero occurrences of the build machine's
+  paths, user name or host name. A tool that publishes what is on your computer had no
+  business publishing what was on its author's.
+- Assembly metadata is attributed to `Believeinus` rather than a personal name, and the
+  `LICENSE` copyright line with it.
+- Two changelog entries named the specific remote-access products installed on the
+  development machine while describing bugs they had exposed. Replaced with the product
+  *class*. This is the same rule that keeps the README screenshots at the empty state: a
+  scanner's own repository should not be a scan result.
+
 - **The unregistered-driver rule no longer reports fifty Windows drivers as rootkits.**
   `concealment.unregistered-driver` rested on a premise — that the supported way to load a
   driver always leaves a service key, so a loaded module without one was mapped in by hand.
@@ -377,7 +392,8 @@ All notable changes to RatScan are recorded here. Format follows
 ### Fixed
 
 - **Finding titles rendered black on a black card and were effectively unreadable** —
-  "RustDesk is running", the scan-integrity signal names and the blind-spot headings.
+  the "<tool> is running" headlines, the scan-integrity signal names and the blind-spot
+  headings.
   The implicit `TextBlock` style lived in `MainWindow.Resources`, and a window-scoped
   implicit style does not reach TextBlocks created from a `DataTemplate`, so every
   templated item fell back to WPF's default black while the explicitly coloured
@@ -417,8 +433,8 @@ All notable changes to RatScan are recorded here. Format follows
   was decorating.
 - Four near-identical findings for one product with multiple helper processes.
   Findings are now deduplicated per product, strongest match winning.
-- Correctly-signed TightVNC was reported as an impostor at Critical severity because
-  the catalogue held a stale publisher string. Impersonation is now claimed only when
+- A correctly-signed VNC-family server was reported as an impostor at Critical severity
+  because the catalogue held a stale publisher string. Impersonation is now claimed only when
   a binary fails signature verification outright; an unrecognised-but-valid signer
   lowers confidence and is disclosed as a limitation of RatScan's own data.
 

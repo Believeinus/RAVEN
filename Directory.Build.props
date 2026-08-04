@@ -46,11 +46,30 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Product>RatScan</Product>
-    <Company>RatScan</Company>
-    <Authors>Hiteshwar Singh</Authors>
+    <Product>RAVEN</Product>
+    <Company>Believeinus</Company>
+    <Authors>Believeinus</Authors>
+    <Copyright>Copyright (c) 2026 Believeinus</Copyright>
     <Version>0.1.0</Version>
     <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup>
+
+  <!--
+    A shipped binary must not carry the machine it was built on.
+
+    Every assembly writes a CodeView (RSDS) debug record naming its .pdb by absolute
+    path, so the published RAVEN.exe contained the developer's full home directory five
+    times over - name included - regardless of whether the .pdb files themselves were
+    distributed. Deleting the symbols from the zip did nothing about it.
+
+    Release builds therefore emit no symbols at all, and PathMap rewrites any source
+    path the compiler would otherwise bake in. Debug builds are untouched: symbols are
+    exactly what you want while developing, and that output never leaves the machine.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <PathMap>$(MSBuildThisFileDirectory)=./</PathMap>
   </PropertyGroup>
 
   <!--
