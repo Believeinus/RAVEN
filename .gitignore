@@ -1,14 +1,10 @@
-# ---- Local-only working files (never committed) ----
-/CLAUDE.md
+# ---- Local-only working notes (never committed) ----
+# Narrative build log, phase checkpoints and audit notes: they record measurements
+# taken on the development machine, so they stay off the repo.
 /docs/ABOUT-PROJECT.md
 /docs/BUILD-LOG.md
 /docs/*-PROGRESS.md
 /docs/SECURITY-AUDIT*.md
-
-# ---- Agent tooling (not product code) ----
-/.agents/
-/.codex/
-/skills-lock.json
 
 # ---- .NET build output ----
 /dist/

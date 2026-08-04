@@ -1,41 +1,22 @@
 # docs/
 
-Index of project documentation for **RatScan**.
+Documentation for **RAVEN**.
 
-| File | Committed | Purpose |
-|---|---|---|
-| `README.md` | ✅ | This index + the context routines |
-| `CHANGELOG.md` | ✅ | Terse, release-facing "what changed" |
-| `BUILD-LOG.md` | ❌ local-only | The story: narrative timeline, walls hit and how they were solved, decisions, deferred ideas |
-| `RATSCAN-PROGRESS.md` | ❌ local-only | Checkpoint for the in-flight v1 build (phases 0–11) |
+| File | Purpose |
+|---|---|
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed, newest first — Added / Changed / Fixed / Security / Deferred, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form |
 
-Only `CLAUDE.md`, `AGENTS.md`, and `README.md` live at the repo root. Everything
-else documentation-shaped belongs here.
+The project also keeps a narrative build log and a phase checkpoint. Both are working notes
+rather than documentation — they record walls hit, measurements taken and decisions deferred,
+including findings from the development machine — so they stay local and are not published.
 
----
+Everything documentation-shaped belongs in this folder; only `README.md` and `LICENSE` live
+at the repo root.
 
-## The context routines
+## Where to start
 
-### `update context`
-
-Append, newest-first. **Never overwrite history.**
-
-1. `BUILD-LOG.md` — new dated bullet at the **top** of the Progress log: what was
-   done, walls hit + fixes, decisions, what was deferred. Refresh the *Current state
-   (snapshot)* block if the stack or deployment state changed.
-2. `CHANGELOG.md` — add to or extend the current dated `[Unreleased]` section
-   (Added / Changed / Fixed / Security / Database / Deployment / Deferred).
-3. `RATSCAN-PROGRESS.md` — update the status header and phase table.
-4. Auto-memory — update `MEMORY.md` plus the relevant memory file(s).
-
-### `absorb context`
-
-The read-only mirror, run at session start. Changes nothing.
-
-Read memory (`MEMORY.md` + active/recent memory files) → `BUILD-LOG.md` (snapshot +
-newest few entries) → `CHANGELOG.md` (`[Unreleased]` + latest release) →
-`RATSCAN-PROGRESS.md` → `git log --oneline -15` + `git status --short` to reconcile
-the docs against the real repo tip and any uncommitted work.
-
-Finish with: production/deploy status, stack, last ~3 sessions, and a numbered
-**open items** list — then ask what to work on.
+- **What the tool is and how to run it** — the [root README](../README.md).
+- **What it can and cannot see** — the *"The constraint that shapes everything"* section
+  there, and the "what this scan could not see" list the app prints on every scan.
+- **What changed recently** — [`CHANGELOG.md`](CHANGELOG.md). The `[Unreleased]` section at
+  the top is what has landed since the last published build.
